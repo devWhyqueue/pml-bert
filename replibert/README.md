@@ -9,13 +9,14 @@ architecture, and training components from the ground up.
 replibert/
 ├── replibert/               # Main source code directory
 │   ├── __init__.py
-│   ├── data_loader.py       # Data loading and preprocessing (CustomDataset class)
+│   ├── data/                # Data loading and preprocessing (CustomDataset class)
 │   ├── model.py             # BERT model architecture
 │   ├── training.py          # Training loop and evaluation code
 │   ├── visualize.py         # Data visualization tools (Word Clouds, sample outputs)
 │   └── config.yaml          # Configuration file for model and data settings
-├── data/                    # Directory for dataset files
-│   └── <dataset_name>/      # Directory for each dataset
+├── scripts/                 # Directory for bash scripts (cluster)
+│   └── build_image.sh       # Build the SIF
+│   └── run_container.sh     # Run the container
 ├── experiments/             # Directory for storing experiment logs and results
 │   ├── logs/                # Training logs
 │   └── checkpoints/         # Model checkpoints
@@ -26,15 +27,6 @@ replibert/
 └── pyproject.toml           # Poetry project dependencies and settings
 
 ```
-
-### Key Files
-
-- **`replibert/data_loader.py`**: Contains the `CustomDataset` class for data loading and processing.
-- **`replibert/model.py`**: Defines the BERT model architecture.
-- **`replibert/train.py`**: Handles the main training loop and model evaluation.
-- **`replibert/visualize.py`**: Implements data visualization functions.
-- **`replibert/config.yaml`**: Stores configuration parameters for the project, such as paths and hyperparameters.
-- **`tests/`**: Includes all tests, following the pytest format.
 
 ## Local Installation
 
@@ -89,22 +81,7 @@ chmod +x scripts/run_container.sh
 ## Configuration
 
 All configuration options are managed through `config.yaml`. Here, you can specify paths, model parameters, and training
-settings. **Example configuration**:
-
-```yaml
-data:
-  path: "data/bookcorpus"
-model:
-  hidden_size: 768
-  num_layers: 12
-  num_heads: 12
-training:
-  batch_size: 32
-  learning_rate: 0.00001
-  num_epochs: 3
-```
-
-Update these values as needed for your experiments.
+settings.
 
 ## Usage
 
@@ -134,12 +111,11 @@ pytest tests/
 
 This includes a basic test for the main script (`test_main.py`) and any additional tests you add.
 
-## Project Notes
+## Datasets
 
-- **Data Directory**: Download and place your dataset in `data/` as specified in `config.yaml`.
-- **Custom Modifications**: You can adjust any hyperparameters, paths, or additional settings in `config.yaml` for
-  different experiment configurations.
-- **Dependencies**: If additional packages are required, update `pyproject.toml` and run `poetry install` to add them to
-  the environment.
+The datasets will not be included in this repository because they are too large.
+They will be downloaded from Hugging Face's datasets library to the location specified in `app.yaml`.
+Total file size is about 72 GB.
+The BookCorpus is not used in contrast to the original paper, more information on the rationale can be found here:
 
-**Project Members**: Please document any changes you make for ease of collaboration and version control.
+https://www.notion.so/Document-data-collection-12eacf24f0f880289da9d7cd99f8b84a?pvs=4

@@ -1,5 +1,5 @@
 data:
-  path: "data/bookcorpus"
+  path: "/home/space/datasets"
 
 model:
   hidden_size: 768

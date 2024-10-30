@@ -1,21 +1,10 @@
-from pathlib import Path
-
-import yaml
-
+from data.download import download_datasets
 from training import train
 
 
 def main():
-    print("Running main.py")
-
-    # Load configuration
-    with open(Path(__file__).parent / "config.yaml", "r") as f:
-        config = yaml.safe_load(f)
-
-    # Run the desired function
-    train(config)
-
-    print("Finished running main.py")
+    download_datasets()
+    train()
 
 
 if __name__ == "__main__":
