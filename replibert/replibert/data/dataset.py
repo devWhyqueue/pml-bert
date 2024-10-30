@@ -14,7 +14,8 @@ class CustomDataset(Dataset):
         # Return a sample from the dataset
         return self.data[idx]
 
-    def load_data(self, path):
+    @staticmethod
+    def load_data(path):
         # Implement loading logic; replace with actual loading mechanism
         # This example assumes data is already a list of samples
-        return [sample for sample in range(100)]  # Example with 100 samples
+        return list(range(100))  # Example with 100 samples

@@ -17,3 +17,7 @@ From: pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
 
     # Clean up Pip cache
     rm -rf ~/.cache/pip
+
+%environment
+    # Set Hugging Face cache directory
+    export HF_HOME="/tmp/cache/huggingface"
