@@ -55,13 +55,13 @@ def break_down_into_spans_and_tokenize(batch) -> dict:
     }
 
 
-def split_text_into_spans(text: str, max_tokens=256) -> list[str]:
+def split_text_into_spans(text: str, max_tokens=512) -> list[str]:
     """
     Split text into spans of sentences, ensuring each span does not exceed a specified number of tokens.
 
     Args:
         text (str): The input text to be split into spans.
-        max_tokens (int, optional): The maximum number of tokens per span. Defaults to 256.
+        max_tokens (int, optional): The maximum number of tokens per span. Defaults to 512.
 
     Returns:
         list[str]: A list of text spans, each containing sentences whose total token count does not exceed max_tokens.
@@ -84,13 +84,13 @@ def split_text_into_spans(text: str, max_tokens=256) -> list[str]:
     return spans
 
 
-def tokenize_spans(spans: list[str], max_length=256) -> dict:
+def tokenize_spans(spans: list[str], max_length=512) -> dict:
     """
     Tokenize a list of text spans into input IDs, attention masks, and special tokens masks.
 
     Args:
         spans (list[str]): A list of text spans to be tokenized.
-        max_length (int, optional): The maximum length of the tokenized output. Defaults to 256.
+        max_length (int, optional): The maximum length of the tokenized output. Defaults to 512.
 
     Returns:
         dict: A dictionary containing the tokenized output, including input IDs, attention mask and special tokens mask.

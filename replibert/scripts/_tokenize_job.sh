@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH --partition=cpu-2h
-#SBATCH --output=$HOME/pml-bert/replibert/logs/tokenize_%a.log
 #SBATCH --cpus-per-task=64
 #SBATCH --mem-per-cpu=4G
 #SBATCH --array=0-9

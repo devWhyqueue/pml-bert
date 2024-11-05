@@ -3,7 +3,7 @@ from datasets import load_from_disk
 
 from configuration.config import get_logger
 from data.download import download_source_datasets
-from data.transform import combine_datasets, spanify_and_tokenize
+from data.transform import combine_datasets, spanify_and_tokenize, apply_mlm
 
 log = get_logger(__name__)
 
@@ -68,6 +68,29 @@ def tokenize(dataset_dir: str, destination: str, start_index: int, end_index: in
     shard_indices = list(range(start_index, end_index))
     spanify_and_tokenize(dataset_dir, destination, shard_indices)
     log.info(f"Tokenized spans generated for shards {shard_indices} in {destination}.")
+
+
+@cli.command()
+@click.option("--dataset_dir", type=click.Path(), help="Directory containing the dataset to process.")
+@click.option("--destination", type=click.Path(), help="Directory where the processed dataset will be saved.")
+@click.option("--start_index", type=int, help="First shard index to mask.")
+@click.option("--end_index", type=int, help="Last shard index to mask (exclusive).")
+def mlm(dataset_dir: str, destination: str, start_index: int, end_index: int):
+    """
+    Apply Masked Language Modeling (MLM) to a dataset and save to disk.
+
+    Parameters:
+    dataset_dir (str): Directory containing the dataset to process.
+    destination (str): Path to save the processed dataset.
+    start_index (int): Starting index of the shards to apply MLM.
+    end_index (int): Ending index of the shards to apply MLM (exclusive).
+
+    This function loads the specified dataset and applies Masked Language Modeling (MLM) to it.
+    The processed dataset is saved in the specified destination directory.
+    """
+    shard_indices = list(range(start_index, end_index))
+    apply_mlm(dataset_dir, destination, shard_indices)
+    log.info(f"MLM applied to {dataset_dir} and saved to {destination}.")
 
 
 if __name__ == "__main__":

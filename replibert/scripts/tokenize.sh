@@ -4,15 +4,14 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Submit the tokenize job array and capture its job ID
-JOB_ID=$(sbatch --parsable "$SCRIPT_DIR/_tokenize_job.sh")
+JOB_ID=$(sbatch --output=$HOME/pml-bert/replibert/logs/tokenize_%a.log --parsable "$SCRIPT_DIR/_tokenize_job.sh")
 
 # Submit the unify job with dependency on the completion of the tokenize job
-sbatch --dependency=afterok:$JOB_ID <<'EOF'
+sbatch --dependency=afterok:$JOB_ID --output=$HOME/pml-bert/replibert/logs/tokenize.log <<'EOF'
 #!/bin/bash
 #SBATCH --partition=cpu-2h
 #SBATCH --cpus-per-task=100
 #SBATCH --mem-per-cpu=4G
-#SBATCH --output=$HOME/pml-bert/replibert/logs/tokenize.log
 
 echo 'Running replibert combine...'
 

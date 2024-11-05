@@ -1,7 +1,7 @@
 import torch.optim as optim
 
 from configuration.config import settings, get_logger
-from data.dataset import CustomDataset
+from data.dataset import TrainingDataset
 from model import Bert
 
 log = get_logger(__name__)
@@ -10,7 +10,7 @@ log = get_logger(__name__)
 def train(config=settings):
     log.warning("Running training")
 
-    dataset = CustomDataset(config['data']['path'])
+    dataset = TrainingDataset(config['data']['path'])
     model = Bert(config['model'])
     optimizer = optim.Adam(model.parameters(), lr=config['training']['learning_rate'])
 
