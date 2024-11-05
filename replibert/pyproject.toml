@@ -29,8 +29,8 @@ optional = true
 torch = { version = "^2.5", source = "torch_cuda", markers = "extra=='gpu' and extra!='cpu'" }
 
 [tool.poetry.extras]
-cpu = ["torch"]
-gpu = ["torch"]
+cpu = ["torch_cpu"]
+gpu = ["torch_cuda"]
 
 [[tool.poetry.source]]
 name = "torch_cpu"
