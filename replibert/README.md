@@ -8,21 +8,21 @@ architecture, and training components from the ground up.
 ```
 replibert/
 ├── replibert/               # Main source code directory
-│   ├── __init__.py
-│   ├── data/                # Data loading and preprocessing (CustomDataset class)
+│   ├── configuration/       # App and logging configuration
+│   ├── data/                # Data download, preprocessing and labeling
+|   ├── tests/               # Test suite
+│   ├── main.py              # Click CLI with commands like download or train
 │   ├── model.py             # BERT model architecture
 │   ├── training.py          # Training loop and evaluation code
 │   ├── visualize.py         # Data visualization tools (Word Clouds, sample outputs)
-│   └── config.yaml          # Configuration file for model and data settings
-├── scripts/                 # Directory for bash scripts (cluster)
+├── scripts/                 # Directory for bash scripts to be executed on the cluster
 │   └── build_image.sh       # Build the SIF
-│   └── run_container.sh     # Run the container
+│   └── download.sh          # Download the datasets
+│   └── combine.sh           # Combine the datasets
+│   └── tokenize.sh          # Tokenize the combined dataset
 ├── experiments/             # Directory for storing experiment logs and results
 │   ├── logs/                # Training logs
 │   └── checkpoints/         # Model checkpoints
-├── tests/                   # Folder for all project tests
-│   ├── test_main.py         # Test for main script
-│   └── [other tests].py
 ├── README.md                # Project documentation
 └── pyproject.toml           # Poetry project dependencies and settings
 
@@ -32,7 +32,7 @@ replibert/
 
 ### 1. Prerequisites
 
-Ensure you have Python 3.12+ and Poetry installed. To install Poetry, follow:
+Ensure you have Python 3.10+ and Poetry installed. To install Poetry, follow:
 
 https://python-poetry.org/docs/
 
@@ -71,11 +71,11 @@ chmod +x scripts/build_image.sh
 ./scripts/build_image.sh
 ```
 
-### 3. Run replibert
+### 3. Run a replibert script
 
 ```bash
-chmod +x scripts/run_container.sh
-./scripts/run_container.sh
+chmod +x scripts/download.sh
+./scripts/download.sh
 ```
 
 ## Configuration
@@ -85,20 +85,10 @@ settings.
 
 ## Usage
 
-### Run Training
-
-To start training, simply run the main script:
+To see all available commands and options, run:
 
 ```bash
-python replibert/main.py
-```
-
-### Data Visualization
-
-To visualize the dataset (e.g., word clouds or sample outputs), use the visualization script:
-
-```bash
-python replibert/visualize.py
+python replibert/main.py --help
 ```
 
 ## Testing
