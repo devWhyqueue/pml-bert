@@ -1,7 +1,7 @@
 import torch.optim as optim
 
 from configuration.config import settings, get_logger
-from data.dataset import TrainingDataset
+from data.training.dataset import TrainingDataset
 from model import Bert
 
 log = get_logger(__name__)

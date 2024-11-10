@@ -1,7 +1,7 @@
 import nltk
 from datasets import Dataset, concatenate_datasets
 
-from data import tokenizer
+from data.training import tokenizer
 
 
 def concatenate(datasets: list[Dataset], keep: list[str] = None) -> Dataset:

@@ -3,7 +3,7 @@ from typing import List, Dict, Tuple
 import numpy as np
 
 from configuration.config import get_logger
-from data import tokenizer
+from data.training import tokenizer
 
 log = get_logger(__name__)
 

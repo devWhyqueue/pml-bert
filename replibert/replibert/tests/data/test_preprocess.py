@@ -1,8 +1,9 @@
 import pytest
 from datasets import Dataset
 
-from data import tokenizer
-from data.preprocess import concatenate, split_text_into_spans, break_down_into_spans_and_tokenize, tokenize_spans
+from data.training import tokenizer
+from data.training.preprocess import concatenate, split_text_into_spans, break_down_into_spans_and_tokenize, \
+    tokenize_spans
 
 
 def test_split_text_normal_case():

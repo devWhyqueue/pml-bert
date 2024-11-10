@@ -1,5 +1,29 @@
 data:
-  path: "/home/space/datasets"
+  train:
+    - identifier: 'wikimedia/wikipedia'
+      short: 'wikipedia'
+      name: '20231101.en'
+      split: 'train'
+    - identifier: 'manu/project_gutenberg'
+      short: 'project_gutenberg'
+      name: null
+      split: 'en'
+  finetuning:
+    - identifier: 'google/civil_comments'
+      short: 'civil_comments'
+      name: null
+      split: null
+    - identifier: 'google/jigsaw_toxicity_pred'
+      short: 'jigsaw_toxicity_pred'
+      name: null
+      split: null
+      config_kwargs:
+        data_dir: 'data/jigsaw_toxicity_pred'
+    - identifier: 'stanfordnlp/sst2'
+      short: 'sst2'
+      name: null
+      split: null
+
 
 model:
   hidden_size: 768

@@ -3,8 +3,8 @@ import os
 import datasets as ds
 
 from configuration.config import get_logger
-from data.mlm import mask_batch
-from data.preprocess import concatenate, break_down_into_spans_and_tokenize
+from data.training.mlm import mask_batch
+from data.training.preprocess import concatenate, break_down_into_spans_and_tokenize
 
 log = get_logger(__name__)
 
