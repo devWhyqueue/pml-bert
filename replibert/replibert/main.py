@@ -1,9 +1,9 @@
 import click
 from datasets import load_from_disk
 
-from configuration.config import get_logger
-from data.download import download_source_datasets
-from data.transform import combine_datasets, spanify_and_tokenize, apply_mlm
+from configuration.config import get_logger, settings
+from data.download import download_hf_datasets, HFDataset
+from data.training.transform import combine_datasets, spanify_and_tokenize, apply_mlm
 
 log = get_logger(__name__)
 
@@ -15,10 +15,32 @@ def cli():
 
 
 @cli.command()
-def download():
-    """Download source datasets."""
-    datasets = download_source_datasets()
-    log.info(f"Downloaded {len(datasets)} datasets.")
+@click.option("--destination", type=click.Path(), help="Directory where the datasets will be saved.")
+@click.option("--train", is_flag=True, help="Flag to indicate downloading training datasets.")
+@click.option("--finetuning", is_flag=True, help="Flag to indicate downloading fine-tuning datasets.")
+def download(destination: str, train: bool, finetuning: bool):
+    """
+    Downloads datasets based on the specified options.
+
+    Parameters:
+    destination (str): Directory where the datasets will be saved.
+    train (bool): Flag to indicate downloading training datasets.
+    finetuning (bool): Flag to indicate downloading fine-tuning datasets.
+
+    This function downloads either training or fine-tuning datasets based on the provided flags.
+    The datasets are saved to the specified destination directory.
+    """
+    if train:
+        to_be_downloaded = settings['data']['train']
+    elif finetuning:
+        to_be_downloaded = settings['data']['finetuning']
+    else:
+        log.error("You must specify either --train or --finetuning.")
+        return
+
+    datasets = [HFDataset(**item) for item in to_be_downloaded]
+    downloaded_datasets = download_hf_datasets(datasets, destination)
+    log.info(f"Downloaded {len(downloaded_datasets)} datasets.")
 
 
 @cli.command()

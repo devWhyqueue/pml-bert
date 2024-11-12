@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch, call
 import pytest
 from datasets import Dataset
 
-from data.transform import combine_datasets, spanify_and_tokenize
+from data.training.transform import combine_datasets, spanify_and_tokenize
 
 
 @pytest.fixture

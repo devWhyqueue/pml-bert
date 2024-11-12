@@ -20,6 +20,7 @@ replibert/
 │   └── download.sh          # Download the datasets
 │   └── combine.sh           # Combine the datasets
 │   └── tokenize.sh          # Tokenize the combined dataset
+├── data/                    # Directory for storing datasets (jigsaw_toxicity_pred)
 ├── experiments/             # Directory for storing experiment logs and results
 │   ├── logs/                # Training logs
 │   └── checkpoints/         # Model checkpoints
