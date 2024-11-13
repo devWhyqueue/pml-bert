@@ -20,17 +20,3 @@ class TrainingDataset(Dataset):
             'special_tokens_mask': self.special_tokens_masks[idx],
             'mlm_labels': self.mlm_labels[idx]
         }
-
-
-def load_data(path: str) -> Dataset:
-    """
-    Load a dataset from a file.
-
-    Args:
-        path (str): The path to the file containing the dataset.
-
-    Returns:
-        Dataset: The loaded dataset.
-    """
-    hf_dataset = hf_ds.load_from_disk(path)
-    return TrainingDataset(hf_dataset)
