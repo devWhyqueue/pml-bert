@@ -72,7 +72,7 @@ class FineTuningDataset(torch.utils.data.Dataset, ABC):
         if self.input_field in item:
             xi = torch.tensor(item[self.input_field], dtype=torch.float32)
         else:
-            xi = torch.tensor(hash(item[self.text_field]), dtype=torch.int64)
+            xi = item[self.text_field]
 
         if self.transformation:
             xi = self.transformation(xi)

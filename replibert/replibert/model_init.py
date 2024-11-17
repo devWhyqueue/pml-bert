@@ -1,12 +1,8 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from transformers import BertModel, BertConfig as HF_BertConfig
-#from model import BERT, CONFIG
+from transformers import BertModel
 
 
 def initialize_from_hf_model(model, config):
-    hs = config.hidden_size
+    hs = config["hidden_size"]
     # Load Hugging Face model
     hf_model = BertModel.from_pretrained("bert-base-uncased")
 
@@ -14,9 +10,11 @@ def initialize_from_hf_model(model, config):
     model.embeddings.word_embeddings.weight.data = hf_model.embeddings.word_embeddings.weight.data.clone()
     model.embeddings.position_embeddings.weight.data = hf_model.embeddings.position_embeddings.weight.data.clone()
     model.embeddings.token_type_embeddings.weight.data = hf_model.embeddings.token_type_embeddings.weight.data.clone()
+    model.embeddings.LayerNorm.weight.data = hf_model.embeddings.LayerNorm.weight.data.clone()
+    model.embeddings.LayerNorm.bias.data = hf_model.embeddings.LayerNorm.bias.data.clone()
 
     # Initialize layers from the Hugging Face model
-    for i in range(len(model.encoder)):
+    for i,_ in enumerate(model.encoder):
         layer = model.encoder[i]
         hf_layer = hf_model.encoder.layer[i]
 
@@ -44,5 +42,3 @@ def initialize_from_hf_model(model, config):
         layer.output_layer_norm.weight.data = hf_layer.output.LayerNorm.weight.data.clone()
         layer.output_layer_norm.bias.data = hf_layer.output.LayerNorm.bias.data.clone()
     return hf_model
-
-    print("Model weights initialized from Hugging Face BERT model.")
