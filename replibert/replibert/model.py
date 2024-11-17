@@ -5,13 +5,12 @@ from model_init import initialize_from_hf_model
 
 class CONFIG:
     "BERT Configuration class."
-    def __init__(self, vocab_size=30522, hidden_size=768, num_hidden_layers=12, # vocab size for hf is slightly different
-                 num_attention_heads=12, intermediate_size=3072, max_position_embeddings=512):
+    def __init__(self, vocab_size=30522, hidden_size=768, num_layers=12, # vocab size for hf is slightly different
+                 num_heads=12, max_position_embeddings=512):
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
-        self.num_hidden_layers = num_hidden_layers
-        self.num_attention_heads = num_attention_heads
-        self.intermediate_size = intermediate_size
+        self.num_layers = num_layers
+        self.num_heads = num_heads
         self.max_position_embeddings = max_position_embeddings
 
 class BERTEmbeddings(nn.Module):
@@ -39,34 +38,34 @@ class BERTLayer(nn.Module):
     "Single layer of BERT consisting of self-attention and feed-forward network."
     def __init__(self, config):
         super(BERTLayer, self).__init__()
-        self.attention = nn.MultiheadAttention(embed_dim=config.hidden_size, num_heads=config.num_attention_heads, batch_first=True) # This is different from hf implementation, considered in weight loading
-        self.intermediate = nn.Linear(config.hidden_size, config.intermediate_size) # Feedforward after attention
-        self.output = nn.Linear(config.intermediate_size, config.hidden_size)   
+        self.attention = nn.MultiheadAttention(embed_dim=config.hidden_size, num_heads=config.num_heads, batch_first=True) # This is different from hf implementation, considered in weight loading
+        self.intermediate = nn.Linear(config.hidden_size, config.hidden_size*4) # Feedforward after attention
+        self.output = nn.Linear(config.hidden_size*4, config.hidden_size)   
         self.attention_layer_norm = nn.LayerNorm(config.hidden_size, eps=1e-12)     # Paper does not specifically mention this but "Attention is all you need" does
         self.output_layer_norm = nn.LayerNorm(config.hidden_size, eps=1e-12)        # same
         self.dropout = nn.Dropout(0.1)
 
-    def forward(self, hidden_states):
-        attention_output, _ = self.attention(hidden_states, hidden_states, hidden_states)
+    def forward(self, hidden_states, attention_mask=None):
+        attention_output, _ = self.attention(hidden_states, hidden_states, hidden_states, key_padding_mask=attention_mask)
         hidden_states = self.attention_layer_norm(hidden_states + self.dropout(attention_output))  # Residual connection
 
         intermediate_output = F.gelu(self.intermediate(hidden_states)) # Paper specifies gelu instead of relu
         layer_output = self.output(intermediate_output)
         return self.output_layer_norm(hidden_states + self.dropout(layer_output))  # Residual connection
 
-class BERT(nn.Module):
+class Bert(nn.Module):
     "BERT model consisting of embeddings and multiple layers of BERT."
     def __init__(self, config):
-        super(BERT, self).__init__()
+        super(Bert, self).__init__()
         self.embeddings = BERTEmbeddings(config)
-        self.encoder = nn.ModuleList([BERTLayer(config) for _ in range(config.num_hidden_layers)])
+        self.encoder = nn.ModuleList([BERTLayer(config) for _ in range(config.num_layers)])
 
-    def forward(self, input_ids, token_type_ids=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None):
         embeddings = self.embeddings(input_ids, token_type_ids)
         hidden_states = embeddings
 
         for layer in self.encoder:
-            hidden_states = layer(hidden_states)
+            hidden_states = layer(hidden_states, attention_mask)
 
         return hidden_states
     
@@ -85,15 +84,47 @@ layer norm with res
 
 """
 
+class BertTuned(nn.Module):
+    """
+    BERT model extended with a classification head for toxic comment classification.
+    """
+    def __init__(self, bert_model, num_labels):
+        super(BertTuned, self).__init__()
+        self.bert = bert_model  # Your custom BERT model
+        self.classifier = nn.Linear(bert_model.encoder[-1].output_size, num_labels)
+        self.dropout = nn.Dropout(0.1)
+
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None):
+        # Forward pass through BERT
+        hidden_states = self.bert(input_ids, token_type_ids)
+        
+        # Use the last hidden state of the [CLS] token for classification
+        cls_token_state = hidden_states[:, 0, :]
+        cls_token_state = self.dropout(cls_token_state)
+        
+        # Classification head
+        logits = self.classifier(cls_token_state)
+        return logits
+
 # Example usage
 if __name__ == "__main__":
     config = CONFIG()
-    model = BERT(config)
-    initialize_from_hf_model(model, config)
+    model = Bert(config)
+    hf_model = initialize_from_hf_model(model, config)
 
     # Example input
     input_ids = torch.randint(0, config.vocab_size, (1, 10))  # Batch size of 1, sequence length of 10, note that first Token should be [CLS]
     token_type_ids = torch.zeros_like(input_ids)  # Segment IDs
 
-    output = model(input_ids, token_type_ids)
+    model.eval()
+    with torch.no_grad():
+        output = model(input_ids, token_type_ids)
+
+    hf_model.eval()
+    with torch.no_grad():
+        output2 = hf_model(input_ids, token_type_ids).last_hidden_state
+
     print(output.shape)  # Should be (1, 10, 768)
+    print(output2.shape)
+    print(output - output2)
+    print(output)

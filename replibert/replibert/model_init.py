@@ -43,5 +43,6 @@ def initialize_from_hf_model(model, config):
         layer.attention_layer_norm.bias.data = hf_layer.attention.output.LayerNorm.bias.data.clone()
         layer.output_layer_norm.weight.data = hf_layer.output.LayerNorm.weight.data.clone()
         layer.output_layer_norm.bias.data = hf_layer.output.LayerNorm.bias.data.clone()
+    return hf_model
 
     print("Model weights initialized from Hugging Face BERT model.")
