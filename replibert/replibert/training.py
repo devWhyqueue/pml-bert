@@ -5,6 +5,7 @@ import torch.nn as nn
 import yaml
 from configuration.config import settings, get_logger
 from data.training.dataset import TrainingDataset
+from data.finetuning.datasets import FineTuningDataset, SST2Dataset
 from model import Bert, BertTuned
 from model_init import initialize_from_hf_model
 from transformers import BertTokenizer
