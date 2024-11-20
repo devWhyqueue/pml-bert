@@ -1,0 +1,94 @@
+\documentclass[10pt,a4paper,oneside]{article} % Changed to oneside for consistent alignment, not sure if we should use twoside
+\usepackage[a4paper,top=20mm,bottom=20mm,outer=5cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{natbib}
+\bibliographystyle{abbrvnat}
+\setcitestyle{authoryear}
+
+\title{Project Machine Learning\\--- Milestone 1 ---} 
+\author{[Imene Ben Ammar, Julian Dobler, Yannik Queisler]}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Overview}
+The goal of this project is to re-implement the BERT Single Sentence Classification Model as \cite{kenton2019bert} specifies and employ it for toxic comment classification.
+This report details the datasets used, feature extraction methods, baseline models, and initial baseline results .
+
+\section{Dataset Overview}
+\subsection{Data Sources}
+The datasets used in this project include the SST2 Dataset used for binary classification tasks and Civil Comments and Jigsaw Toxicity Prediction Dataset used for multi-class classification tasks.
+s
+
+\subsection{Data Characteristics}
+The structure of the datasets differs therefor in the hierarchy of targets, with binary labels (positive/negative) for the SST2 dataset and multiple toxicity categories, such as obscene, threat, and insult, for the Civil Comments dataset. The data distribution provides insights into the balance across these categories \textbf{[provide stats here or include image]}. The quality of the datasets was evaluated by checking for issues such as duplicates, missing values, and noise \textbf{[Did we do this?]} It was suggested to check for incomplete data and remove irrelevant entries. \textbf{[did we do this? Or write the datasets are prechecked]}
+
+\subsection{Feature Extraction}
+We apply the BERT model and the baseline models on the datasets. These models need different features, therefore we identify two feature extraction methods which can be used on the raw dataset. We also implement the function \texttt{load\_data} which provides data in the required format.
+\subsubsection{BERT Feature Extraction}
+For the BERT model, feature extraction is based on the BERT tokenizer, which converts text into token IDs. BERT embeddings incorporate word, position, and token type embeddings, as described in \cite{kenton2019bert}. 
+\subsubsection{Baseline Feature Extraction}
+For the baseline methods we use TF-IDF (Term Frequency-Inverse Document Frequency) features. These are used for the Bayesian and logistic regression baseline methods because they effectively quantify the importance of words in a document relative to the entire dataset. TF-IDF assigns higher weights to words that appear frequently in a specific document but less frequently across the corpus, helping to filter out common stop words and focus on terms that are more relevant the the meaning of the specific document \citep{sparck1972statistical}. This makes TF-IDF appropriate for text classification tasks, as it provides a simple and rich representation of textual data that can be used as input of machine learning models like Naive Bayes and logistic regression.
+\subsubsection{Loading Data}
+As part of our data pipeline, we implement the function \texttt{load\_data}. This function is designed to support various feature extraction techniques by accepting a transformation argument that specifies the desired feature extractor. For the BERT model, the transformation utilizes the BERT tokenizer.  For baseline models like Naive Bayes and logistic regression, the transformation would be the TF-IDF feature extractor. By leveraging this modular design, the \verb|load_data| function ensures flexibility and compatibility with different approaches.
+\textbf{[Missing: feature normalizing?, different shape inputs,  answers by ML about data ]}
+
+\section{Baseline Method and Evaluation}
+\subsection{Baseline Models}
+
+We applied two baseline models in this porject, inlcuding Naive Bayes and Logistic Regression. Each is well suited for the dataset it is employed on. 
+\subsubsection{Naive Bayes}
+Naive Bayes was applied to the SST2 dataset for binary classification.  This algorithm levereges knowledge about the probability of features appearing in each class. It then classifies a given sample based on its features under the assumption of probabilistic independence of the different features. 
+\subsubsection{Logistic Regression}
+ Logistic regression, on the other hand, was employed on the Civil Comments and Jigsaw Toxicity datasets, which involve multi-class classification. This algorithm predicts the probability of an instance belonging to a class by applying a sigmoid function to a linear combination of input features. 
+ 
+ \textbf{[Add why we use different models for the two tasks]}
+\subsection{Evaluation Metrics}
+\begin{itemize}
+    \item \textbf{[provide eval metric for binary-class classification]}
+    \item \textbf{[provide eval metri for multi-class classification]}
+\end{itemize}
+
+\subsection{Results}
+\begin{itemize}
+    \item \textbf{Naive Bayes (SST2):} [provide results]
+    \item \textbf{Logistic Regression (Civil Comments and Jigsaw):} [provide results]
+\end{itemize}
+
+\subsection{Overfitting and Challenges}
+\begin{itemize}
+    \item \textbf{[Did we do anything against overfitting?]}
+    \item \textbf{[Different categories characterization?]}
+    \item \textbf{[Something non-techincal about good features]}
+
+\end{itemize}
+
+
+\section{Discussion}
+\subsection{Key Insights}
+\begin{itemize}
+    \item \textbf{[what are challenges of the datasets]}
+    \item \textbf{[why is task not trivial]}
+    \item \textbf{[why is answer from model interesting]}
+
+\end{itemize}
+
+\subsection{Future Directions}
+\begin{itemize}
+    \item \textbf{[What does or doesn't work, why?]}
+    \item \textbf{[what is possible with the datasets, usuful in business?]}
+    \item \textbf{[things we want to try]}
+\end{itemize}
+
+
+
+\bibliography{report_template}
+\end{document}
