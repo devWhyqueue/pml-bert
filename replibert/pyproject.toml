@@ -22,13 +22,14 @@ pytest = "^8.3"
 optional = true
 
 [tool.poetry.group.cpu.dependencies]
-torch = { version = "^2.5", source = "torch_cpu", markers = "extra=='cpu' and extra!='gpu'" }
+torch = { version = "^2.5", markers = "extra=='cpu' and extra!='gpu'" }
 
 [tool.poetry.group.gpu]
 optional = true
 
 [tool.poetry.group.gpu.dependencies]
 torch = { version = "^2.5", source = "torch_cuda", markers = "extra=='gpu' and extra!='cpu'" }
+
 
 [tool.poetry.extras]
 cpu = ["torch_cpu"]
