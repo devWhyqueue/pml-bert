@@ -3,8 +3,6 @@
 *.pyc
 *.sif
 *.pth
-replibert/data
-replibert/pml.def
 .DS_Store
 .idea/
 .ipynb_checkpoints/
