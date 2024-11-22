@@ -39,8 +39,3 @@ training:
   num_epochs: 3
   n_train: 1000
   n_test: 100
-
-  num_epochs: 300
-  device : 'cuda'
-  n_train: 1000
-  n_test: 200
