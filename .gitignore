@@ -2,8 +2,6 @@
 *.log
 *.pyc
 *.sif
-replibert/data
-replibert/pml.def
 .DS_Store
 .idea/
 .ipynb_checkpoints/
