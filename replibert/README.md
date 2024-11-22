@@ -13,14 +13,18 @@ replibert/
 |   ├── tests/               # Test suite
 │   ├── main.py              # Click CLI with commands like download or train
 │   ├── model.py             # BERT model architecture
+│   ├── baseline.py          # Baseline models for the datasets
 │   ├── training.py          # Training loop and evaluation code
-│   ├── visualize.py         # Data visualization tools (Word Clouds, sample outputs)
 ├── scripts/                 # Directory for bash scripts to be executed on the cluster
+│   ├── training/
+│   │   └── combine.sh       # Combine the datasets
+│   │   └── tokenize.sh      # Tokenize the combined dataset
+│   │   └── mlm.sh           # Prepare training data for MLM
+│   └── run.sh               # Run the replibert CLI (command and options must be specified)
+│   └── baseline.sh          # Run the baseline model
 │   └── build_image.sh       # Build the SIF
-│   └── download.sh          # Download the datasets
-│   └── combine.sh           # Combine the datasets
-│   └── tokenize.sh          # Tokenize the combined dataset
-├── data/                    # Directory for storing datasets (jigsaw_toxicity_pred)
+├── data/                    # Jigsaw Dataset (for download with HF) and notebook for data exploration
+│   ├── plots/               # Data exploration plots
 ├── experiments/             # Directory for storing experiment logs and results
 │   ├── logs/                # Training logs
 │   └── checkpoints/         # Model checkpoints
@@ -43,9 +47,8 @@ Navigate to the project root and use Poetry to install dependencies:
 
 ```bash
 cd replibert
-poetry install -E cpu --with cpu --sync
-# Alternatively, for GPU support:
-# poetry install -E gpu --with gpu --sync
+poetry install -E cpu
+# or poetry install -E gpu --with gpu
 ```
 
 ### 3. Activate the Virtual Environment
@@ -74,9 +77,17 @@ chmod +x scripts/build_image.sh
 
 ### 3. Run a replibert script
 
+To run the baseline method for example, use:
+
 ```bash
-chmod +x scripts/download.sh
-./scripts/download.sh
+chmod +x scripts/run.sh
+./scripts/run.sh baseline --dataset_name sst2 --dataset_dir /home/space/datasets/sst2
+```
+
+You can watch the logs with:
+
+```bash
+tail -f logs/run.log
 ```
 
 ## Configuration

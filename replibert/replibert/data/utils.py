@@ -1,8 +1,11 @@
-from typing import Callable, Tuple, Optional, Any, Generator, Type
+from typing import Callable, Tuple, Optional, Any, Type
 
 import torch
 
+from configuration.config import get_logger
 from data.finetuning.datasets import CivilCommentsDataset, JigsawToxicityDataset, SST2Dataset
+
+log = get_logger(__name__)
 
 
 def load_data(
@@ -11,9 +14,9 @@ def load_data(
         transformation: Optional[Callable[[Any], Any]] = None,
         n_train: Optional[int] = None,
         n_test: Optional[int] = None
-) -> Tuple[Generator[Tuple[Any, Any], None, None], Generator[Tuple[Any, Any], None, None]]:
+) -> Tuple[torch.utils.data.Dataset, torch.utils.data.Dataset]:
     """
-    Load data and return generators for training and test sets.
+
 
     Args:
         dataset (str): The name of the dataset to load ('civil_comments', 'jigsaw_toxicity_pred', 'sst2').
@@ -23,13 +26,10 @@ def load_data(
         n_test (Optional[int], optional): Number of test samples.
 
     Returns:
-        Tuple[Generator[Tuple[Any, Any], None, None], Generator[Tuple[Any, Any], None, None]]:
-        Generators for training and test sets.
+
     """
     dataset_class = _get_dataset_class(dataset)
-    train_dataset, test_dataset = _create_train_test_datasets(dataset_class, dataset_dir, transformation,
-                                                              n_train, n_test)
-    return _create_generators(train_dataset, test_dataset)
+    return _create_train_test_datasets(dataset_class, dataset_dir, transformation, n_train, n_test)
 
 
 def _get_dataset_class(dataset: str) -> Type:
@@ -74,13 +74,16 @@ def _create_train_test_datasets(dataset_class: Type, dataset_dir: str, transform
     train_dataset = dataset_class(dataset_dir=dataset_dir, split='train', n_samples=n_train,
                                   transformation=transformation)
     try:
-        test_dataset = dataset_class(dataset_dir=dataset_dir, split='test', n_samples=n_test,
+        # Labels are hidden in SST2 test set
+        test_split = 'validation' if dataset_class == SST2Dataset else 'test'
+        test_dataset = dataset_class(dataset_dir=dataset_dir, split=test_split, n_samples=n_test,
                                      transformation=transformation)
     except KeyError:
         test_size_ratio = _get_test_size_ratio(n_test, len(train_dataset))
         split = train_dataset.hf_dataset.train_test_split(test_size=test_size_ratio)
         train_dataset.hf_dataset = split['train']
         test_dataset = dataset_class(hf_dataset=split['test'], transformation=transformation)
+
     return train_dataset, test_dataset
 
 
@@ -96,21 +99,3 @@ def _get_test_size_ratio(n_test: Optional[int], train_len: int) -> float:
         float: The ratio of test samples to training samples.
     """
     return n_test / train_len if n_test is not None and isinstance(n_test, int) else 0.2
-
-
-def _create_generators(train_dataset: torch.utils.data.Dataset, test_dataset: torch.utils.data.Dataset) \
-        -> Tuple[Generator[Tuple[Any, Any], None, None], Generator[Tuple[Any, Any], None, None]]:
-    """
-    Create generators for training and test datasets.
-
-    Args:
-        train_dataset (torch.utils.data.Dataset): The training dataset.
-        test_dataset (torch.utils.data.Dataset): The test dataset.
-
-    Returns:
-        Tuple[Generator[Tuple[Any, Any], None, None], Generator[Tuple[Any, Any], None, None]]:
-        Generators for training and test datasets.
-    """
-    train_generator = (train_dataset[i] for i in range(len(train_dataset)))
-    test_generator = (test_dataset[i] for i in range(len(test_dataset)))
-    return train_generator, test_generator
