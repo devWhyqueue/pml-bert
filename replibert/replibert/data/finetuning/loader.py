@@ -1,7 +1,5 @@
 from datasets import load_dataset
 from torch.utils.data import IterableDataset, DataLoader
-from transformers import BertTokenizer
-import torch
 
 def load_data(dataset="glue", task="sst2", transformation=None, n_train=None, n_test=None, batch_size=16):
     """
