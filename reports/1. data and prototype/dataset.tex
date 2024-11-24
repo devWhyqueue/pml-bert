@@ -1,0 +1,133 @@
+\section{Datasets}
+In this report, we focus on three key datasets that are pivotal for understanding and evaluating models in toxic comment classification. These datasets provide a diverse range of annotations and textual contexts that allow us to benchmark various methods and analyze their effectiveness.
+
+\subsection{Civil Comments}
+The Civil Comments dataset comprises 1.8 million crowdsourced annotations across 280,000 comments sourced from the Civil Comments platform. Each comment is annotated with labels for toxic behavior, including subcategories such as obscene language, threats, and identity-based hate.
+
+Labels are real numbers between zero and one. This means, that for classification tasks, a threshold is required to distinguish between positive and negative classifications. We chose the threshold to be 0.5, as this is a common practice with the Civil Comments dataset in the literature, ensuring consistency and comparability with prior studies. \cite{jigsaw2019, Duchene2023}
+
+Additionally, the dataset captures a variety of identity attributes, making it valuable for studying unintended biases in toxicity detection models. Given its comprehensive labeling and real-world application, this dataset is a prime candidate for developing and testing toxicity classification models.~\cite{jigsaw2019}
+
+\subsection{Jigsaw Toxic Comment}
+This dataset, released as part of a series of Kaggle competitions, includes comments from Wikipedia labeled for toxicity and specific subcategories like severe toxicity, obscene language, threats, insults, and identity-based hate. Each comment can belong to multiple subclasses at the same time. It has been widely adopted in the field and is frequently used in toxic comment classification research, as highlighted by Andročec in their systematic review. Its extensive use ensures comparability with previous studies and allows us to evaluate model performance in a well-established benchmark setting.~\cite{Androcec2020, jigsaw2017}
+
+\subsection{Stanford Sentiment Treebank}
+While primarily designed for sentiment analysis, the SST-2 dataset includes binary labels indicating whether a sentence from movie reviews is positive or negative. Though it does not directly address toxicity detection, SST-2 provides a relevant benchmark for binary text classification. Additionally, SST-2 was included in the original BERT paper, allowing for a direct comparison between our replication and the original results. Despite its conceptual differences from the toxicity detection domain, its inclusion ensures a broader perspective on our model's capabilities and alignment with existing literature.
+
+\subsection{Remarks}
+While our primary focus is on the datasets mentioned above, numerous other datasets are available for toxic comment classification. These include HateXplain, the Offensive Language Identification Dataset (OLID), the Hate Speech Offensive (HSOL) Dataset, and various Twitter Hate Speech datasets.
+
+For the initial milestone of this project, we implement and evaluate baseline methods on the Civil Comments dataset. This allows us to establish a strong foundation for toxicity classification before integrating and analyzing models on the Jigsaw and SST-2 datasets in later phases.
+
+\subsection{Data characteristics}
+To better understand the structure and content of the datasets used in this project, several key information were extracted. Furthermore, all visualizations can be found in the appendix \ref{appendix} of this report.
+
+First of all, invalid labels as well as null values were checked in all datasets and filtered out.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lccc}
+\textbf{Dataset} & \textbf{Invalid Labels} & \textbf{Null Values} & \textbf{Total Rows} \\
+\hline
+\rowcolor{gray!10}
+Jigsaw Toxicity & 0 & 0 & 223,549 \\
+Civil Comments & 0 & 0 & 1,999,514 \\
+\rowcolor{gray!10}
+SST-2 & 1821 & 0 & 68,221 \\
+\end{tabular}
+\caption{Invalid labels and null values in datasets.}
+\label{tab:dataset_info}
+\end{table}
+
+\subsubsection{Toxicity subtypes and sentiment analysis}
+
+\begin{enumerate}
+    \item \textbf{Toxicity subtype frequency:} The frequency of each toxicity subtype was visualized using bar plots. To this aim, the occurrences of comments labeled as toxic for each of the subtypes were counted. This provides insight into the prevalence of different types of toxicity within the datasets as shown in figure \ref{fig:tox_freq_plots}.
+    \item \textbf{Toxicity subtypes/sentiment percentage:} The percentage of comments falling under each toxicity subtype and sentiment label was visualized using pie charts as shown in figure \ref{fig:tox_sentiment_percentage}. The analysis considered any comment that was classified under one or more toxicity subtypes as toxic. This provided an overview of the commonness of toxic comments compared to non-toxic ones as well as positive and negative sentiments in the dataset, highlighting the fact that all datasets suffer from class imbalance.
+\end{enumerate}
+
+\subsubsection{Textual analysis}
+\begin{enumerate}
+    \item \textbf{Word clouds:} Separate word clouds were generated to visually represent the most frequently occurring terms in comments labeled as toxic or non-toxic, as well as positive and negative sentiments. Comments categorized as toxic included those marked with any toxicity subtype label, while sentiment labels were categorized into positive or negative. An example of the Jigsaw Toxicity dataset is shown in figure \ref{fig:wordcloud_jigsaw}.
+    \item \textbf{Word Frequency:} The most common words associated with each toxicity subtype/sentiment were identified and visualized using bar plots as shown in figure \ref{fig:word_freq}. As in the Civil Comments dataset, the toxicity labels are not binary but instead have continuous values to represent different degrees of toxicity, a threshold was applied to filter comments based on their toxicity score, selecting those that exceeded a threshold of 0.8. The top N (10) most frequent words for each toxicity label/sentiment were extracted by tokenizing and cleaning the text of comments that met the threshold. The resulting word frequencies were then plotted to show the most common terms for each category. 
+    \item \textbf{Comment length:} To identify potential patterns between comment length and toxicity/sentiment in the datasets, the lengths of comments were analyzed. This included plotting histograms of the distribution of comment lengths, box plots to highlight the differences in comment length across the different categories (toxic vs. non-toxic and positive vs. negative), and bar plots to show the average comment lengths per category (see figure \ref{fig:comment_len_plots}). 
+    \item \textbf{Toxicity subtypes vs.\ comment length:} Scatter plots were created to explore the relationship between comment length and various toxicity subtypes in the Jigsaw and Civil Comments datasets. For each toxicity label, a scatter plot was generated with comment length on the x-axis and the toxicity level on the y-axis. These plots allow for the visualization of potential correlations between the length of comments and the increase in toxicity level and therefore provide insights into whether longer comments tend to be more toxic or if there is no clear relationship between comment length and toxicity. This plot is more useful in the Civil Comments datasets, as the toxicity values are real numbers between 0 and 1. Figure \ref{fig:tox_vs_len_cc} illustrates an example of the comment length for the subclass threat of the Civil Comments dataset. It suggests that higher Threat levels are mainly linked to short comments, not exceeding 250. 
+\end{enumerate}
+
+\subsection{Feature extraction}
+Multiple approaches exist to transform textual data into numerical vectors. They can be classified into several categories:
+
+\begin{itemize}
+    \item \textbf{Frequency-based:} These methods rely on word or token frequencies to generate feature representations. Examples include BoW and TF-IDF. \cite{Manning2008}
+    \item \textbf{Embedding-based:} These techniques involve representing words, phrases, or documents as dense, low-dimensional vectors, typically learned from large corpora. Examples include word-level embeddings like Word2Vec, GloVe, and FastText, sentence-level embeddings like universal sentence encoder, and pre-trained contextual embeddings like BERT and GPT. \cite{Mikolov2013, Pennington2014, Bojanowski2017, Cer2018, Devlin2019, Radford2019}
+    \item \textbf{Statistical:} These methods use statistical models to generate feature representations. Examples include latent Dirichlet allocation (LDA) and latent semantic analysis (LSA). \cite{Blei2003, Deerwester1990}
+    \item \textbf{Symbolic and graph-based:} These methods capture relationships between words or concepts based on symbolic or structural properties. Examples include n-grams and graph representations like DeepWalk and Node2Vec. \cite{Perozzi2014, Grover2016}
+\end{itemize}
+
+We selected TF-IDF as our vectorization method for the baseline because it aligns well with our goal of establishing a straightforward benchmark using classical machine learning algorithms. As a classical and widely accepted approach, TF-IDF is computationally efficient and easy to integrate into traditional models like logistic regression or SVMs, making it an ideal choice for initial experimentation. This rationale echoes Salton’s foundational work in automatic text processing, which highlights the efficacy of frequency-based methods like TF-IDF for text analysis. By choosing TF-IDF, we ensure simplicity and reproducibility while focusing on baseline performance. \cite{Salton1989}
+
+In the case of BERT, embeddings are learned. As this project does not include training but only fine-tuning the model, we download the publicly available model weights. Note, that the BERT model cannot handle different shapes of features as it is a transformer model. Therefore, techniques like padding and truncating must be applied.
+
+\subsubsection{Method}
+Textual inputs are first (optionally) preprocessed and then transformed into numerical vectors using BoW and TF-IDF techniques. Finally, datasets are resampled as the toxic comment classification datasets show significant class imbalance.
+
+\textbf{Bag of Words} is a simple vectorization technique that represents text by counting the occurrence of words in a document. It creates a vocabulary of unique words and represents each document as a vector, disregarding word order. While simplistic, it is effective in capturing word frequency. \cite{Manning2008}
+
+\textbf{Term frequency-inverse document frequency} measures the importance of a word within a document relative to a corpus. It combines term frequency (TF) and inverse document frequency (IDF) to emphasize meaningful words while downweighting common ones. \cite{Manning2008}
+
+\subsubsection{Preprocessing}
+Before transforming textual data into numerical representations, we (optionally) applied a series of preprocessing steps to clean and standardize the data:
+
+\begin{enumerate}
+    \item \textbf{Lowercasing}: Converts all text to lowercase for consistency.
+    \item \textbf{Removing noise}: Eliminates URLs, mentions, hashtags, numbers, and punctuation that do not carry semantic meaning.
+    \item \textbf{Tokenization}: Splits text into individual tokens (words).
+    \item \textbf{Filtering}: Removes non-alphabetic tokens and stop words (e.g., ``and,'' ``the'').
+    \item \textbf{Lemmatization}: Reduces words to their base form (e.g., ``running'' $\rightarrow$ ``run'') to consolidate variations.
+\end{enumerate}
+
+Similar preprocessing steps are also used in \cite{Zaheri2020, Husnain2021}.
+
+\subsubsection{Resampling}
+The Civil Comments and the Jigsaw Toxicity datasets have an imbalanced class distribution, with significantly fewer positive samples compared to negative samples. To address this, we used a resampling technique to create a more balanced dataset while ensuring the minority class (positive samples) is fully represented.
+
+The resampling approach involves the following steps:
+\begin{enumerate}
+    \item \textbf{Class identification}: Identify the indices of samples belonging to the positive and negative classes based on their labels.
+    \item \textbf{Minority class retention}: Retain all samples from the minority class (positive samples) to ensure complete representation.
+    \item \textbf{Majority class resampling}: From the majority class (negative samples), randomly sample a subset based on the desired proportion between positive and negative classes.
+    \item \textbf{Balanced subset creation}: Combine the retained positive samples and the resampled negative samples to form a balanced dataset.
+\end{enumerate}
+
+This method ensures that the positive class is not underrepresented and that the desired class ratio is achieved, reducing the bias caused by class imbalance.
+
+Resampling techniques are commonly employed in machine learning to handle imbalanced datasets. In this implementation, our approach can be categorized as undersampling the majority class, a straightforward and effective method for balancing datasets. More complex techniques exist like the Synthetic Minority Over-sampling Technique (SMOTE), which generates synthetic samples for the minority class but were discarded to keep the baseline simple. \cite{Chawla2002}
+
+\subsubsection{Feature intuition}
+In the context of toxic comment classification, good features should effectively capture the semantic and syntactic cues indicative of toxic behavior while minimizing irrelevant noise. Such features might include specific words, phrases, or patterns commonly associated with toxic language, such as offensive terms, negative sentiment indicators, or aggressive expressions. Additionally, good features should distinguish subtle differences between toxicity and non-toxicity, such as distinguishing between sarcastic humor and outright hostility. Contextual relationships between words are also essential; for example, the phrase "not bad" has a different sentiment than the isolated word "bad." Hence, features that preserve context, capture linguistic nuances, and weigh terms based on their relevance within the corpus (e.g., through TF-IDF weighting) are well-suited for this task.
+
+\subsection{Typical queries}
+
+Toxic comment classification aims to identify harmful or offensive language in text. Understanding the types of questions humans ask about datasets like Civil Comments and Jigsaw Toxicity, as well as what ML can answer, provides critical context for this task.
+
+\subsubsection{Human questions}
+
+Humans typically seek to understand the data's structure and implications:
+
+\begin{itemize}
+    \item \textbf{Data characteristics:} What types of toxicity (e.g., hate speech, profanity) are included? How balanced are the classes (toxic vs. non-toxic)?
+    \item \textbf{Annotations:} How were labels assigned? Were multiple annotators involved, and how consistent were they?
+    \item \textbf{Bias and ethics:} Does the dataset reflect demographic or cultural biases? What are the ethical implications of using it?
+\end{itemize}
+
+\subsubsection{ML-answerable questions}
+
+ML models can address specific patterns and predictions:
+\begin{itemize}
+    \item \textbf{Classification:} Is a comment toxic? If so, what type of toxicity does it exhibit?
+    \item \textbf{Quantitative insights:} What patterns (e.g., word usage) correlate with toxicity? How well does the model generalize to unseen data?
+    \item \textbf{Bias detection:} Are there biases in toxicity predictions across demographic groups?
+    \item \textbf{Error analysis:} What are common false positives and negatives?
+\end{itemize}
+
+While ML can predict toxicity and detect patterns, it struggles with context-dependent nuances (e.g., sarcasm) and cannot address ethical concerns. Human interpretation remains essential for understanding intent and ensuring responsible application.

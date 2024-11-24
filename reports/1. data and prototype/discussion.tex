@@ -1,0 +1,22 @@
+\section{Discussion}
+Logistic Regression, particularly with preprocessing and optimized positive sample proportions (0.1 and 0.25), proved to be the most reliable baseline, achieving high weighted F1, accuracy, and AUC-ROC scores, with minimal signs of overfitting as performance remained consistent across validation and test sets. This indicates that the model is learning generalizable patterns effectively. However, the approach struggles to identify toxic comments accurately, with precision, recall, and F1 scores for the toxic class (C1) remaining unsatisfactory, peaking at only 0.53.
+
+Additionally, TF-IDF vectorization was found to be unsuitable, confirming its limitations in capturing the complex linguistic features needed for this task. Despite preprocessing providing marginal improvements in some configurations, it did not show consistent benefits across all metrics, highlighting the challenges posed by the dataset's significant class imbalance and the need for more sophisticated approaches to address these limitations.
+
+These results align with findings in the wider body of research on toxic comment classification. As observed by Gladwin et al., traditional techniques like TF-IDF for feature extraction often fail to capture the complex semantic and syntactic nuances necessary for this task, particularly in datasets with significant class imbalance. This reinforces the need for more advanced text representation techniques, such as word embeddings or transformer-based embeddings, to better capture the intricacies of online discourse. \cite{Gladwin2022}
+
+\subsection{Task complexity}
+The Civil Comments dataset presents a unique combination of challenges that make the task of toxic comment classification non-trivial:
+
+\begin{itemize}
+    \item \textbf{Class Imbalance:} Toxic comments represent a small fraction of the dataset, resulting in models that struggle to generalize well for the minority class (C1). As shown in our results, while overall accuracy and weighted F1 scores are satisfactory, precision and recall for the toxic class are not.
+    \item \textbf{Linguistic Variability:} Toxic comments often involve subtle linguistic cues, sarcasm, or coded language, making them hard to detect with traditional methods.
+    \item \textbf{Practical Implications:} Despite these challenges, achieving even moderate success in this task is critical, as the insights provided by the final model can help identify harmful content on online platforms and foster safer digital spaces.
+\end{itemize}
+
+Based on our findings, achieving satisfactory performance on the Civil Comments dataset is possible but requires careful handling of class imbalance and feature representation. In a business context, deploying a model with these capabilities could have significant value for content moderation on social media platforms, forums, and other online communities. However, improving precision and recall for toxic comments is essential before practical implementation to avoid misclassifications that could undermine user trust.
+
+\subsection{Future directions}
+
+Several promising avenues for future work can be explored to enhance toxic comment classification. First, applying the baseline methods to additional datasets, such as Jigsaw Toxicity and SST-2, would enable a broader evaluation of their effectiveness and provide a foundation for comparing the performance of BERT against the baselines across all three datasets. Furthermore, exploring a non-binary classification format, such as toxicity subtype classification, may yield deeper insights into the nuances of toxic language and offer more granular moderation capabilities. Finally, fine-tuning our pre-trained BERT model on these datasets and comparing its performance to the current baseline methods could provide more satisfactory results.
+
