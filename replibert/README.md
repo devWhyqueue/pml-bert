@@ -10,11 +10,11 @@ replibert/
 ├── replibert/               # Main source code directory
 │   ├── configuration/       # App and logging configuration
 │   ├── data/                # Data download, preprocessing and labeling
+│   ├── model/               # Model architecture with weight initialization
+│   ├── finetuning/          # Fine-tuning and evaluation
 |   ├── tests/               # Test suite
-│   ├── main.py              # Click CLI with commands like download or train
-│   ├── model.py             # BERT model architecture
+│   ├── main.py              # Click CLI with commands like download or baseline
 │   ├── baseline.py          # Baseline models for the datasets
-│   ├── training.py          # Training loop and evaluation code
 ├── scripts/                 # Directory for bash scripts to be executed on the cluster
 │   ├── training/
 │   │   └── combine.sh       # Combine the datasets

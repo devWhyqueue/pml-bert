@@ -152,5 +152,26 @@ def baseline(dataset_name: str, dataset_dir: str, n_train: int = None, n_test: i
         log.error("Unknown dataset name. This should not happen due to limited options.")
 
 
+@cli.command()
+@click.option("--dataset_name", type=click.Choice(['civil_comments', 'jigsaw_toxicity_pred', 'sst2']), required=True,
+              help="Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred', 'sst2'.")
+@click.option("--dataset_dir", type=click.Path(exists=True), required=True,
+              help="Directory containing the dataset to process.")
+@click.option("--weights_dir", type=click.Path(), help="Directory to save the model weights.")
+def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
+    """
+    Fine-tune a BERT model on the specified dataset.
+
+    Parameters:
+    dataset_name (str): Name of the dataset to use.
+    dataset_dir (str): Directory containing the dataset to process.
+    weights_dir (str): Directory to save the model weights.
+    """
+    from finetuning.classification import finetune as finetune_model
+
+    finetune_model(dataset_name, dataset_dir, weights_dir)
+    log.info(f"Fine-tuning completed for dataset {dataset_name}.")
+
+
 if __name__ == "__main__":
     cli()

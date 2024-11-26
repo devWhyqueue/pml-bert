@@ -5,6 +5,7 @@ import torch
 from nltk import WordNetLemmatizer, word_tokenize
 from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
+from transformers import BertTokenizer
 
 from configuration.config import get_logger
 from data.finetuning.datasets import FineTuningDataset
@@ -47,6 +48,25 @@ def tf_idf_vectorize(train_dataset: FineTuningDataset, val_dataset: FineTuningDa
                                      desc="Vectorizing validation dataset")
     test_dataset.hf_dataset \
         = test_dataset.hf_dataset.map(_transform_batch, batched=True, batch_size=512, desc="Vectorizing test dataset")
+
+
+def bert_tokenize(text: str) -> dict:
+    """
+    Tokenizes the input text using the BERT tokenizer.
+
+    Args:
+        text (str): The text string to tokenize.
+
+    Returns:
+        dict: A dictionary containing the tokenized text as tensors.
+    """
+    return BertTokenizer.from_pretrained("bert-base-uncased")(
+        text,
+        max_length=512,
+        padding="max_length",
+        truncation=True,
+        return_tensors="pt"
+    )
 
 
 def preprocess(datasets: list[FineTuningDataset]):
