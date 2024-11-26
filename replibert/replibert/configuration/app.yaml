@@ -35,7 +35,7 @@ model:
 finetuning:
   batch_size: 32
   learning_rate: 0.00001
-  device: "cpu"
+  device: "gpu"
   num_epochs: 3
-  n_train: 1000
-  n_test: 100
+  n_train: ""
+  n_test: ""
