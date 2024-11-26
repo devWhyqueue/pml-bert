@@ -37,5 +37,5 @@ finetuning:
   learning_rate: 0.00001
   device: "gpu"
   num_epochs: 3
-  n_train: ""
-  n_test: ""
+  n_train: null
+  n_test: null
