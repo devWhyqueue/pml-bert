@@ -151,6 +151,11 @@ def baseline(dataset_name: str, dataset_dir: str, n_train: int = None, n_test: i
     else:
         log.error("Unknown dataset name. This should not happen due to limited options.")
 
+@cli.command()
+def fine_tune():
+    from tuning import tune
+    tune()
 
+    
 if __name__ == "__main__":
     cli()
