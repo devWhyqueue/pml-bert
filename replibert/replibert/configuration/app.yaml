@@ -32,11 +32,10 @@ model:
   max_position_embeddings: 512
   vocab_size: 30522
 
-training:
+finetuning:
   batch_size: 32
   learning_rate: 0.00001
   device: "cpu"
   num_epochs: 3
   n_train: 1000
   n_test: 100
-  save_model: false
