@@ -167,7 +167,7 @@ def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
     dataset_dir (str): Directory containing the dataset to process.
     weights_dir (str): Directory to save the model weights.
     """
-    from replibert.finetuning.classification import finetune as finetune_model
+    from finetuning.classification import finetune as finetune_model
 
     finetune_model(dataset_name, dataset_dir, weights_dir)
     log.info(f"Fine-tuning completed for dataset {dataset_name}.")
