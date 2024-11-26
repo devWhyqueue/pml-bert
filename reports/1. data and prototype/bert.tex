@@ -1,0 +1,28 @@
+\section{BERT}
+
+As part of the first milestone of this project, we implemented a prototype of the BERT-base model to address the task of toxic comment classification as described in the literature. \cite{Devlin2019} 
+
+While the baseline methods will be evaluated in this milestone to provide a foundational benchmark, evaluation of BERT and comparison with the mentioned baselines will be reserved for future milestones.
+
+\subsection{Model}
+
+The BERT-base model consists of a transformer-based architecture with 12 encoder layers, each featuring multi-head self-attention with 12 attention heads, a hidden size of 768, and a feed-forward network with an intermediate size of 3072. This implementation can be viewed on our GitHub repository. \cite{Queisler2024} 
+
+Its architecture is designed to capture deep contextual relationships in input sequences. For our implementation, we adopted the single-sentence classification approach, where the input comment is tokenized and augmented with a special [CLS] token, which serves as a pooled representation for the entire input sequence, which means that it contains all the necessary information of the sentence for classification. \cite{Devlin2019}
+
+A classification head was added on top of the pre-trained BERT model. This head is a fully connected layer applied to the [CLS] token output from the final transformer layer, which output will serve for binary classification (toxic or non-toxic). To leverage prior knowledge, we initialized the model with pre-trained weights from HuggingFace and we will proceed to train the fine-tuning layer for the downstream task.
+
+This architecture should enable the BERT model to achieve robust contextual understanding, and its performance will be compared against the baseline methods to evaluate its effectiveness in toxic comment classification.
+
+\subsection{Prior approaches}
+Historically, researchers applied classical machine learning approaches, such as SVMs and logistic regression, which relied on feature extraction methods like bag-of-words and TF-IDF. \cite{Ozoh2019, Chakrabarty2020}
+
+While these methods provided early advancements, they were inherently limited in capturing semantic meaning and contextual dependencies within text. The introduction of word embeddings, such as Word2Vec and GloVe, alongside deep learning models like RNNs, LSTMs, and CNNs, marked significant progress. \cite{Zaheri2020, Sharma2018, Georgakopoulos2018, Anand2019}
+
+These methods leverage pre-trained embeddings to incorporate some level of semantic understanding but remain to face challenges in effectively handling polysemy, capturing long-range dependencies, and understanding complex syntactic structures. These limitations resulted in less accurate performance in nuanced tasks like toxic comment detection. \cite{Devlin2019, Ezen2020, Tan2022}
+
+\subsection{Solutions}
+The introduction of BERT brought transformative changes to NLP and addressed many of the limitations of earlier approaches. Prior transformer-based models used unidirectional processing, which limited the contextual understanding of a sentence. BERT's Transformer architecture enables bidirectional processing of text, allowing the model to consider both left and right contexts simultaneously. This capability provides BERT with a better understanding of language compared to traditional unidirectional models. Furthermore, BERT leverages pre-training on extensive corpora and fine-tuning on specific datasets, facilitating transfer learning and significantly improving performance on tasks such as toxic comment classification. \cite{Devlin2019, radford2018improving, vaswani2017attention}
+
+\subsection{Limitations}
+Despite its notable strengths, BERT is not without limitations. One primary concern is its computational intensity. Fine-tuning and deploying BERT requires substantial computational resources, which can be challenging in resource-constrained environments. Additionally, while BERT is pre-trained on extensive corpora, its performance in toxic comment classification heavily depends on the quality and diversity of the fine-tuning dataset. Biases present in training data can result in biased predictions, which is a critical challenge in fairness-sensitive tasks. Moreover, BERT's complexity often leads to overfitting when trained on small datasets, making it less effective in scenarios with limited labeled data. Another challenge arises from domain-specific language, such as internet slang and rapidly evolving toxic terms, which may require additional pre-training or customized tokenizers to ensure effective detection. \cite{lee2021auber, vucetic2022efficient}

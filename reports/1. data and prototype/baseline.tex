@@ -1,0 +1,17 @@
+\section{Baseline methods}
+
+For the first milestone, we implemented a baseline for the Civil Comments dataset. Since it poses a binary classification problem, we selected several popular machine learning models for this task: Multinomial naive Bayes, linear support vector machine, logistic regression, and random forest classifier. These models are well-known for their performance in text classification tasks. \cite{Riduan2021}
+
+\textbf{Multinomial naive Bayes} is a probabilistic classifier rooted in Bayes' theorem. Particularly effective for text classification tasks, it relies on feature vectors representing frequencies or counts of words. By assuming that features are conditionally independent, this method simplifies computation and performs well with BoW representations. \cite{Lewis1998}
+
+\textbf{Linear support vector classifier}, a model based on support vector machines (SVM), seeks the optimal hyperplane to separate data into two classes. Its linearity and efficiency make it a powerful choice for large-scale text datasets. \cite{Chang2011}
+
+\textbf{Logistic regression} predicts the probability of a binary outcome by employing the sigmoid function to map predictions to probabilities. Its simplicity and interpretability have made it a staple for text classification tasks. \cite{Hilbe2011}
+
+\textbf{Random forest}, an ensemble learning technique, combines multiple decision trees to enhance predictive accuracy. By averaging results from individual trees, it reduces overfitting and improves generalization. \cite{Breiman2001}
+
+The models, preprocessing steps, and resampling parameters were optimized using grid search, a simple approach to hyperparameter tuning. Grid search exhaustively searches through a manually specified subset of hyperparameters to determine the best combination for a model.
+
+
+
+
