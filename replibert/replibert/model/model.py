@@ -118,6 +118,7 @@ class Bert(nn.Module):
         super(Bert, self).__init__()
         self.embeddings = BertEmbeddings(config)
         self.encoder = nn.ModuleList([BertLayer(config) for _ in range(config["num_layers"])])
+        self.config = config
 
     def forward(self, input_ids: torch.Tensor, token_type_ids: Optional[torch.Tensor] = None,
                 attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -159,7 +160,6 @@ class BertToxic(nn.Module):
         self.bert = bert_model
         self.classifier = nn.Linear(config["hidden_size"], num_labels)
         self.dropout = nn.Dropout(0.1)
-        self.config = config
 
     def forward(self, input_ids: torch.Tensor, token_type_ids: Optional[torch.Tensor] = None,
                 attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
