@@ -1,7 +1,12 @@
+from datetime import timedelta
+from typing import Optional, Tuple
+
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch import GradScaler, autocast
+from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
 from configuration.config import settings, get_logger
@@ -10,122 +15,276 @@ from data.utils import load_data
 from finetuning.evaluate import evaluate
 from model.initialize import initialize_with_weights
 from model.model import Bert, BertToxic
+from utils import get_available_cpus
 
 log = get_logger(__name__)
 
 
-def finetune(dataset: str, dataset_dir: str, weights_dir: str = None, config: dict = settings["finetuning"]):
+def finetune(dataset: str, dataset_dir: str, weights_dir: Optional[str] = None, config: dict = settings["finetuning"]) \
+        -> None:
     """
-    Fine-tunes a BERT model on a given dataset.
+    Fine-tunes a BERT model on the specified dataset using distributed data parallel.
 
     Args:
-        dataset (str): The name of the dataset to use for fine-tuning.
+        dataset (str): The name of the dataset.
         dataset_dir (str): The directory where the dataset is located.
-        weights_dir (str, optional): The directory to save the model weights. Defaults to None.
-        config (dict, optional): Configuration settings for training. Defaults to settings["finetuning"].
+        weights_dir (Optional[str]): Directory to save the model weights.
+        config (dict): Configuration settings.
+    """
+    rank, world_size = _initialize_distributed()
+    log.info(f"Running finetuning on {world_size} GPUs but only logging from rank {rank}.")
+    device = torch.device(f'cuda:{rank}')
+
+    log.info(f"Preparing data loaders for {dataset}...")
+    train_loader, test_loader = _get_data_loader(dataset, dataset_dir, rank, world_size, config)
+    model = _initialize_model(device)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank])
+    optimizer, criterion, scaler = _initialize_training_components(model, config)
+    _train_model(model, train_loader, optimizer, criterion, scaler, config)
+
+    if weights_dir and rank == 0:
+        _save_model_weights(model, weights_dir)
+
+    if rank == 0:
+        _evaluate_model(model, test_loader, criterion, config["device"])
+
+    dist.destroy_process_group()
+
+
+def _initialize_distributed() -> Tuple[int, int]:
+    """
+    Initializes the distributed environment.
 
     Returns:
-        None
+        Tuple[int, int]: The rank and world size.
     """
-    log.info("Loading data...")
-    train_loader, test_loader = _get_data_loader(dataset, dataset_dir)
-
-    log.info("Initializing BERT model...")
-    model = _initialize_model(config)
-
-    optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"], weight_decay=0)
-    criterion = nn.BCEWithLogitsLoss()
-    for epoch in tqdm(range(config["num_epochs"]), desc="Fine-tuning", unit="epoch"):
-        model.train()
-        total_loss, total_samples = _finetune_one_epoch(config, criterion, model, optimizer, train_loader)
-        avg_loss = total_loss / total_samples
-        log.info(f'Epoch {epoch + 1}/{config["num_epochs"]} - Loss: {avg_loss:.4f}')
-
-    if weights_dir:
-        log.info("Saving model weights")
-        torch.save(model.state_dict(), f"{weights_dir}/bert_toxic_weights.pth")
-
-    log.info("Evaluating trained model")
-    evaluate(model, test_loader, criterion, config["device"])
+    dist.init_process_group(backend='nccl', timeout=timedelta(seconds=30))
+    world_size = dist.get_world_size()
+    device_count = torch.cuda.device_count()
+    log.info(f"World size is {world_size} and device count is {device_count}.")
+    rank = dist.get_rank() % torch.cuda.device_count()
+    torch.cuda.set_device(rank)
+    return rank, min(world_size, device_count)
 
 
-def _get_data_loader(dataset: str, dataset_dir: str, config: dict = settings["finetuning"]) -> tuple[
-    DataLoader, DataLoader]:
+def _get_data_loader(dataset: str, dataset_dir: str, rank: int, world_size: int, config: dict = settings["finetuning"]):
     """
-    Loads the training and testing data loaders.
+    Loads the training and testing data loaders with DistributedSampler.
 
     Args:
-        dataset (str): The name of the dataset to use.
-        dataset_dir (str): The directory where the dataset is located.
-        config (dict, optional): Configuration settings for data loading. Defaults to settings["finetuning"].
+        dataset (str): Dataset name.
+        dataset_dir (str): Dataset directory.
+        rank (int): Process rank.
+        world_size (int): Total number of processes.
+        config (dict, optional): Configuration settings.
 
     Returns:
-        tuple[DataLoader, DataLoader]: The training and testing data loaders.
+        tuple: Training and testing data loaders.
     """
     train_dataset, test_dataset = load_data(
         dataset=dataset,
         dataset_dir=dataset_dir,
-        transformation=bert_tokenize,
         n_train=config["n_train"],
         n_test=config["n_test"]
     )
-    train_loader = DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True, num_workers=2)
-    test_loader = DataLoader(test_dataset, batch_size=config["batch_size"], shuffle=False, num_workers=2)
+
+    bert_tokenize(train_dataset)
+    bert_tokenize(test_dataset)
+
+    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
+    test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False)
+
+    train_loader = DataLoader(
+        train_dataset, batch_size=config["batch_size"], sampler=train_sampler,
+        num_workers=get_available_cpus(), pin_memory=True
+    )
+    test_loader = DataLoader(
+        test_dataset, batch_size=config["batch_size"], sampler=test_sampler,
+        num_workers=get_available_cpus(), pin_memory=True
+    )
 
     return train_loader, test_loader
 
 
-def _initialize_model(config: dict = settings["finetuning"]) -> BertToxic:
+def _initialize_model(device: torch.device) -> BertToxic:
     """
-    Initializes the BERT model with pre-trained weights and adapts it for binary classification.
+    Initializes the BERT model with pre-trained weights for binary classification.
 
     Args:
-        config (dict, optional): Configuration settings for model initialization. Defaults to settings["finetuning"].
+        device (torch.device): The device to perform computation on.
 
     Returns:
-        BertToxic: The initialized BERT model for binary classification.
+        BertToxic: The initialized BERT model.
     """
     model = Bert()
     initialize_with_weights(model)
     model = BertToxic(model, num_labels=1)
-    model.to(config["device"])
+    model.to(device)
     return model
 
 
-def _finetune_one_epoch(config, criterion, model, optimizer, train_loader):
+def _initialize_training_components(model: nn.Module, config: dict) -> Tuple[optim.Optimizer, nn.Module, GradScaler]:
     """
-    Performs one epoch of fine-tuning on the training data.
+    Initializes the optimizer, criterion, and gradient scaler.
 
     Args:
-        config (dict): Configuration settings for training.
-        criterion (nn.Module): The loss function.
-        model (nn.Module): The BERT model to fine-tune.
-        optimizer (optim.Optimizer): The optimizer for training.
-        train_loader (DataLoader): The data loader for the training data.
+        model (nn.Module): The model to be trained.
+        config (dict): Configuration settings.
 
     Returns:
-        tuple[float, int]: The total loss and the total number of samples processed.
+        Tuple[optim.Optimizer, nn.Module, GradScaler]: The optimizer, criterion, and gradient scaler.
     """
-    total_loss = 0
+    optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"], weight_decay=0)
+    criterion = nn.BCEWithLogitsLoss().to(config["device"])
+    scaler = GradScaler()
+    return optimizer, criterion, scaler
+
+
+def _train_model(model: nn.Module, train_loader: DataLoader, optimizer: optim.Optimizer, criterion: nn.Module,
+                 scaler: GradScaler, config: dict) -> None:
+    """
+    Trains the model.
+
+    Args:
+        model (nn.Module): The model to be trained.
+        train_loader (DataLoader): The training data loader.
+        optimizer (optim.Optimizer): The optimizer.
+        criterion (nn.Module): The loss function.
+        scaler (GradScaler): The gradient scaler.
+        config (dict): Configuration settings.
+    """
+    for epoch in range(config["num_epochs"]):
+        train_loader.sampler.set_epoch(epoch)
+        model.train()
+        total_loss, total_samples = _finetune_one_epoch(config, criterion, model, optimizer, train_loader, scaler)
+        avg_loss = total_loss / total_samples
+        log.info(f'Epoch {epoch + 1}/{config["num_epochs"]} - Loss: {avg_loss:.4f}')
+
+
+def _save_model_weights(model: nn.Module, weights_dir: str) -> None:
+    """
+    Saves the model weights.
+
+    Args:
+        model (nn.Module): The model to be saved.
+        weights_dir (str): The directory to save the model weights.
+    """
+    log.info("Saving model weights")
+    torch.save(model.module.state_dict(), f"{weights_dir}/bert_toxic_weights.pth")
+
+
+def _evaluate_model(model: nn.Module, test_loader: DataLoader, criterion: nn.Module, device: torch.device) -> None:
+    """
+    Evaluates the model.
+
+    Args:
+        model (nn.Module): The model to be evaluated.
+        test_loader (DataLoader): The test data loader.
+        criterion (nn.Module): The loss function.
+        device (torch.device): The device to perform computation on.
+    """
+    log.info("Evaluating trained model")
+    evaluate(model.module, test_loader, criterion, device)
+
+
+def _finetune_one_epoch(config: dict, criterion: nn.Module, model: nn.Module, optimizer: optim.Optimizer,
+                        train_loader: DataLoader, scaler: GradScaler, log_interval: int = 10_000) -> Tuple[float, int]:
+    """
+    Performs one epoch of fine-tuning with mixed precision.
+
+    Args:
+        config (dict): Configuration settings.
+        criterion (nn.Module): Loss function.
+        model (nn.Module): BERT model.
+        optimizer (optim.Optimizer): Optimizer.
+        train_loader (DataLoader): Training data loader.
+        scaler (GradScaler): Gradient scaler for mixed precision.
+        log_interval (int): Logging interval.
+
+    Returns:
+        tuple: Total loss and total samples processed.
+    """
+    total_loss = 0.0
     total_samples = 0
-    for batch in train_loader:
-        # Tokenized inputs and labels
-        input_ids = batch[0]["input_ids"].squeeze(1).to(config["device"])  # Remove extra dimension
-        attention_mask = batch[0]["attention_mask"].squeeze(1).to(config["device"])
-        labels = batch[1].to(config["device"]).float()  # Ensure labels are float for BCEWithLogitsLoss
+    running_loss = 0.0
+    for batch_idx, (inputs, labels) in enumerate(
+            tqdm(train_loader, desc="Fine-tuning", unit="batch", dynamic_ncols=True, disable=(dist.get_rank() != 0))
+    ):
+        input_ids, attention_mask, labels = _process_batch(inputs, labels, config)
 
-        # Forward pass
-        logits = model(input_ids=input_ids, attention_mask=attention_mask).squeeze(-1)  # Ensure shape is (batch_size)
-        loss = criterion(logits, labels)
-
-        # Backward pass
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        with autocast(str(config["device"])):
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+            logits = outputs.squeeze(-1)
+            loss = criterion(logits, labels)
 
-        # Track loss
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+
         batch_size = input_ids.size(0)
         total_loss += loss.item() * batch_size
+        running_loss += loss.item()
         total_samples += batch_size
 
+        if (batch_idx + 1) % log_interval == 0:
+            running_loss = _log_progress(batch_idx, log_interval, running_loss, train_loader)
+
     return total_loss, total_samples
+
+
+def _process_batch(inputs: torch.Tensor, labels: torch.Tensor, config: dict):
+    """
+    Processes a batch and moves data to the appropriate device.
+
+    Args:
+        inputs (torch.Tensor): Input tensor.
+        labels (torch.Tensor): Labels tensor.
+        config (dict): Configuration settings.
+
+    Returns:
+        tuple: Processed input IDs, attention masks, and labels.
+    """
+    input_ids = inputs[:, 0, :].to(config["device"], non_blocking=True)
+    attention_mask = inputs[:, 1, :].to(config["device"], non_blocking=True)
+    labels = labels.to(config["device"], non_blocking=True)
+    return input_ids, attention_mask, labels
+
+
+def _compute_loss(model: nn.Module, criterion: nn.Module, input_ids: torch.Tensor, attention_mask: torch.Tensor,
+                  labels: torch.Tensor, device: str) -> torch.Tensor:
+    """
+    Computes the loss using mixed precision.
+
+    Args:
+        model (nn.Module): The BERT model.
+        criterion (nn.Module): The loss function.
+        input_ids (torch.Tensor): Tensor of input IDs.
+        attention_mask (torch.Tensor): Tensor of attention masks.
+        labels (torch.Tensor): Tensor of labels.
+        device (str): The device to perform computation on.
+
+    Returns:
+        torch.Tensor: The computed loss.
+    """
+    with autocast(device):
+        logits = model(input_ids=input_ids, attention_mask=attention_mask).squeeze(-1)
+        return criterion(logits, labels)
+
+
+def _log_progress(batch_idx: int, log_interval: int, running_loss: float, train_loader: DataLoader) -> float:
+    """
+    Logs progress at specified intervals and resets the running loss.
+
+    Args:
+        batch_idx (int): The current batch index.
+        log_interval (int): The interval at which to log progress.
+        running_loss (float): The running loss.
+        train_loader (DataLoader): The training data loader.
+
+    Returns:
+        float: The reset running loss (always 0).
+    """
+    avg_loss = running_loss / log_interval
+    log.info(f"[Batch {batch_idx + 1}/{len(train_loader)}] Loss: {avg_loss:.4f}")
+    return 0

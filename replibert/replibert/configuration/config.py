@@ -4,6 +4,7 @@ from pathlib import Path
 
 import torch.multiprocessing
 import yaml
+from torch.distributed import is_initialized, get_rank
 from transformers import logging as tfl
 
 # App Config
@@ -18,5 +19,12 @@ tfl.set_verbosity_error()
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 
+class RankFilter(logging.Filter):
+    def filter(self, record):
+        return not is_initialized() or get_rank() == 0
+
+
 def get_logger(name: str) -> Logger:
-    return logging.getLogger(f"replibert.{name}")
+    logger = logging.getLogger(f"replibert.{name}")
+    logger.addFilter(RankFilter())
+    return logger

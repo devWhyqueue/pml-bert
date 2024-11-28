@@ -9,13 +9,14 @@ from transformers import BertTokenizer
 
 from configuration.config import get_logger
 from data.finetuning.datasets import FineTuningDataset
+from utils import get_available_cpus
 
 try:
     nltk.data.find('stopwords')
     nltk.data.find('wordnet')
 except LookupError:
-    nltk.download('stopwords')
-    nltk.download('wordnet')
+    nltk.download('stopwords', quiet=True)
+    nltk.download('wordnet', quiet=True)
 
 log = get_logger(__name__)
 
@@ -50,23 +51,42 @@ def tf_idf_vectorize(train_dataset: FineTuningDataset, val_dataset: FineTuningDa
         = test_dataset.hf_dataset.map(_transform_batch, batched=True, batch_size=512, desc="Vectorizing test dataset")
 
 
-def bert_tokenize(text: str) -> dict:
+def bert_tokenize(dataset: FineTuningDataset):
     """
-    Tokenizes the input text using the BERT tokenizer.
+    Tokenizes the text data in the given dataset using the BERT tokenizer.
 
     Args:
-        text (str): The text string to tokenize.
+        dataset (FineTuningDataset): The dataset to tokenize.
 
     Returns:
-        dict: A dictionary containing the tokenized text as tensors.
+        None
     """
-    return BertTokenizer.from_pretrained("bert-base-uncased")(
-        text,
-        max_length=512,
-        padding="max_length",
-        truncation=True,
-        return_tensors="pt"
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", use_fast=True)
+
+    def _tokenize_batch(batch):
+        texts = batch[dataset.text_field]
+        tokenized = tokenizer(
+            texts,
+            max_length=512,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt"
+        )
+        return {
+            'input_ids': tokenized['input_ids'].tolist(),
+            'attention_mask': tokenized['attention_mask'].tolist()
+        }
+
+    log.info(f"Tokenizing dataset: {dataset.split}")
+    dataset.hf_dataset = dataset.hf_dataset.map(
+        _tokenize_batch,
+        batched=True,
+        batch_size=512,
+        num_proc=get_available_cpus(),
+        desc=f"Tokenizing {dataset.split} dataset"
     )
+
+    dataset.input_field = ['input_ids', 'attention_mask']
 
 
 def preprocess(datasets: list[FineTuningDataset]):

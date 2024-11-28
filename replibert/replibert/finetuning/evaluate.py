@@ -7,7 +7,7 @@ from model.model import BertToxic
 log = get_logger(__name__)
 
 
-def evaluate(model: BertToxic, test_loader: DataLoader, criterion: torch.nn.modules.loss, device: str):
+def evaluate(model: torch.nn.Module, test_loader: DataLoader, criterion: torch.nn.modules.loss, device: torch.device):
     """
     Evaluate the performance of the given model on the test dataset.
 
@@ -15,7 +15,7 @@ def evaluate(model: BertToxic, test_loader: DataLoader, criterion: torch.nn.modu
         model (BertToxic): The model to evaluate.
         test_loader (DataLoader): DataLoader for the test dataset.
         criterion (torch.nn.modules.loss): Loss function to use for evaluation.
-        device (str): Device to run the evaluation on ('cpu' or 'cuda').
+        device (torch.device): Device to run the evaluation on.
 
     Returns:
         tuple: A tuple containing the average loss and accuracy.
@@ -30,7 +30,8 @@ def evaluate(model: BertToxic, test_loader: DataLoader, criterion: torch.nn.modu
     return avg_loss, accuracy
 
 
-def _calculate_loss(model: BertToxic, test_loader: DataLoader, criterion: torch.nn.modules.loss, device: str):
+def _calculate_loss(model: torch.nn.Module, test_loader: DataLoader, criterion: torch.nn.modules.loss,
+                    device: torch.device):
     """
     Calculate the total loss and accuracy for the given model on the test dataset.
 
@@ -38,7 +39,7 @@ def _calculate_loss(model: BertToxic, test_loader: DataLoader, criterion: torch.
         model (BertToxic): The model to evaluate.
         test_loader (DataLoader): DataLoader for the test dataset.
         criterion (torch.nn.modules.loss): Loss function to use for evaluation.
-        device (str): Device to run the evaluation on ('cpu' or 'cuda').
+        device (torch.device): Device to run the evaluation on.
 
     Returns:
         tuple: A tuple containing the total correct predictions, total loss, and total samples.
@@ -47,10 +48,10 @@ def _calculate_loss(model: BertToxic, test_loader: DataLoader, criterion: torch.
     total_correct = 0
     total_samples = 0
     with torch.no_grad():
-        for batch in test_loader:
-            input_ids = batch[0]["input_ids"].squeeze(1).to(device)
-            attention_mask = batch[0]["attention_mask"].squeeze(1).to(device)
-            labels = batch[1].to(device).float()  # Ensure labels are float for BCEWithLogitsLoss
+        for inputs, labels in test_loader:
+            input_ids = inputs[:, 0, :].to(device, non_blocking=True)
+            attention_mask = inputs[:, 1, :].to(device, non_blocking=True)
+            labels = labels.to(device).float()
 
             logits = model(input_ids=input_ids, attention_mask=attention_mask).squeeze(-1)
             probabilities = torch.sigmoid(logits)
