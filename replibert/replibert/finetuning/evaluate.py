@@ -1,64 +1,164 @@
 import torch
-from torch.utils.data import DataLoader
+import torch.distributed as dist
+from sklearn.metrics import classification_report, roc_auc_score
+from torch import nn
+from torch.utils.data import DataLoader, DistributedSampler
+from tqdm import tqdm
 
-from configuration.config import get_logger
-from model.model import BertToxic
+from configuration.config import get_logger, settings
+from data.finetuning.datasets import FineTuningDataset
+from model.model import BertToxic, Bert
+from utils import is_main_process, _initialize_distributed, get_available_cpus
 
 log = get_logger(__name__)
 
 
-def evaluate(model: BertToxic, test_loader: DataLoader, criterion: torch.nn.modules.loss, device: str):
+def evaluate(test_dataset: FineTuningDataset, weights: str | dict, config: dict = settings["finetuning"]):
     """
-    Evaluate the performance of the given model on the test dataset.
+    Evaluate the trained BERT model on the test dataset.
 
     Args:
-        model (BertToxic): The model to evaluate.
-        test_loader (DataLoader): DataLoader for the test dataset.
-        criterion (torch.nn.modules.loss): Loss function to use for evaluation.
-        device (str): Device to run the evaluation on ('cpu' or 'cuda').
+        test_dataset (FineTuningDataset): The test dataset.
+        weights (str | dict): Path to the model weights or the state dictionary.
+        config (dict): Configuration settings.
 
     Returns:
-        tuple: A tuple containing the average loss and accuracy.
+        None
     """
+    rank, world_size = _initialize_distributed()
+    log.info(f"Evaluating on {world_size} devices...")
+
+    test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False)
+    test_loader = DataLoader(
+        test_dataset, batch_size=config["batch_size"], sampler=test_sampler,
+        num_workers=get_available_cpus(), pin_memory=True
+    )
+
+    model = BertToxic(Bert(), num_labels=1)
+    state_dict = torch.load(weights, weights_only=True) if isinstance(weights, str) else weights
+    model.load_state_dict(state_dict)
+    model.to(config["device"])
+    model = torch.nn.parallel.DistributedDataParallel(model)
+
     model.eval()
-    total_correct, total_loss, total_samples = _calculate_loss(model, test_loader, criterion, device)
+    local_loss, local_samples, local_labels, local_preds, local_probs \
+        = _calculate_local_results(model, test_loader, config["device"])
+    total_loss, total_samples = _aggregate_scalar_values(local_loss, local_samples, config["device"])
+    combined_labels, combined_preds, combined_probs = _gather_all_predictions(local_labels, local_preds, local_probs)
 
-    avg_loss = total_loss / total_samples
-    accuracy = total_correct / total_samples
-    log.info(f"Evaluation complete - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
-
-    return avg_loss, accuracy
+    if is_main_process():
+        _log_metrics(total_loss, total_samples, combined_labels, combined_preds, combined_probs)
 
 
-def _calculate_loss(model: BertToxic, test_loader: DataLoader, criterion: torch.nn.modules.loss, device: str):
+def _calculate_local_results(model: torch.nn.Module, test_loader: DataLoader, device: str):
     """
-    Calculate the total loss and accuracy for the given model on the test dataset.
+    Calculate local loss and predictions for the test dataset.
 
     Args:
-        model (BertToxic): The model to evaluate.
+        model (torch.nn.Module): The model to evaluate.
         test_loader (DataLoader): DataLoader for the test dataset.
-        criterion (torch.nn.modules.loss): Loss function to use for evaluation.
-        device (str): Device to run the evaluation on ('cpu' or 'cuda').
+        device (str): Device to run the evaluation on (e.g., 'cpu' or 'cuda').
 
     Returns:
-        tuple: A tuple containing the total correct predictions, total loss, and total samples.
+        tuple: A tuple containing total loss, total samples, all labels, all predictions, and all probabilities.
     """
-    total_loss = 0
-    total_correct = 0
+    total_loss = 0.0
     total_samples = 0
+    all_predictions = []
+    all_labels = []
+    all_probabilities = []
+
+    criterion = nn.BCEWithLogitsLoss().to(device)
     with torch.no_grad():
-        for batch in test_loader:
-            input_ids = batch[0]["input_ids"].squeeze(1).to(device)
-            attention_mask = batch[0]["attention_mask"].squeeze(1).to(device)
-            labels = batch[1].to(device).float()  # Ensure labels are float for BCEWithLogitsLoss
+        for inputs, labels in tqdm(test_loader, desc="Evaluating", unit="batch", disable=not is_main_process()):
+            input_ids = inputs[:, 0, :].to(device, non_blocking=True)
+            attention_mask = inputs[:, 1, :].to(device, non_blocking=True)
+            labels = labels.to(device)
 
             logits = model(input_ids=input_ids, attention_mask=attention_mask).squeeze(-1)
             probabilities = torch.sigmoid(logits)
             predictions = (probabilities > 0.5).long()
             loss = criterion(logits, labels)
 
-            total_correct += (predictions == labels.long()).sum().item()
-            total_samples += labels.size(0)
-            total_loss += loss.item() * labels.size(0)
+            batch_size = labels.size(0)
+            total_samples += batch_size
+            total_loss += loss.item() * batch_size
 
-    return total_correct, total_loss, total_samples
+            all_predictions.extend(predictions.cpu().numpy())
+            all_labels.extend(labels.cpu().round().numpy().astype(int))
+            all_probabilities.extend(probabilities.cpu().numpy())
+
+    return total_loss, total_samples, all_labels, all_predictions, all_probabilities
+
+
+def _aggregate_scalar_values(local_loss: float, local_samples: int, device: str):
+    """
+    Aggregate scalar values (loss and samples) across processes.
+
+    Args:
+        local_loss (float): Local loss value.
+        local_samples (int): Local sample count.
+        device (str): Device to run the aggregation on (e.g., 'cpu' or 'cuda').
+
+    Returns:
+        tuple: A tuple containing total loss and total samples.
+    """
+    loss_tensor = torch.tensor(local_loss, device=device)
+    samples_tensor = torch.tensor(local_samples, device=device)
+    dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
+    dist.all_reduce(samples_tensor, op=dist.ReduceOp.SUM)
+    return loss_tensor.item(), samples_tensor.item()
+
+
+def _gather_all_predictions(local_labels, local_preds, local_probs):
+    """
+    Gather predictions and labels from all ranks.
+
+    Args:
+        local_labels (list): Local labels.
+        local_preds (list): Local predictions.
+        local_probs (list): Local probabilities.
+
+    Returns:
+        tuple: A tuple containing combined labels, combined predictions, and combined probabilities.
+    """
+    world_size = dist.get_world_size() if dist.is_initialized() else 1
+
+    gathered_labels = [None] * world_size
+    gathered_predictions = [None] * world_size
+    gathered_probabilities = [None] * world_size
+
+    dist.all_gather_object(gathered_labels, local_labels)
+    dist.all_gather_object(gathered_predictions, local_preds)
+    dist.all_gather_object(gathered_probabilities, local_probs)
+
+    # Flatten gathered lists
+    combined_labels = [lbl for rank_labels in gathered_labels for lbl in rank_labels]
+    combined_preds = [pred for rank_preds in gathered_predictions for pred in rank_preds]
+    combined_probs = [prob for rank_probs in gathered_probabilities for prob in rank_probs]
+
+    return combined_labels, combined_preds, combined_probs
+
+
+def _log_metrics(total_loss: float, total_samples: int, labels, preds, probs):
+    """
+    Log evaluation metrics.
+
+    Args:
+        total_loss (float): Total loss value.
+        total_samples (int): Total sample count.
+        labels (list): Combined labels.
+        preds (list): Combined predictions.
+        probs (list): Combined probabilities.
+
+    Returns:
+        None
+    """
+    avg_loss = total_loss / total_samples
+    log.info(f"Evaluation complete - Loss: {avg_loss:.4f}")
+
+    class_report = classification_report(labels, preds)
+    log.info(f"Classification Report:\n{class_report}")
+
+    roc_auc = roc_auc_score(labels, probs, average="weighted")
+    log.info(f"ROC-AUC Score: {roc_auc:.4f}")
