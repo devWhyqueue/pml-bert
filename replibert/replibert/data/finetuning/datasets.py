@@ -69,7 +69,9 @@ class FineTuningDataset(torch.utils.data.Dataset, ABC):
             Tuple[torch.tensor, torch.tensor]: A tuple containing the input tensor and the label tensor.
         """
         item = self.hf_dataset[idx]
-        if self.input_field in item:
+        if isinstance(self.input_field, list):
+            xi = torch.tensor([item[field] for field in self.input_field], dtype=torch.int32)
+        elif self.input_field in item:
             xi = torch.tensor(item[self.input_field], dtype=torch.float32)
         else:
             xi = item[self.text_field]

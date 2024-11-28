@@ -1,9 +1,7 @@
 from typing import Callable, Tuple, Optional, Any, Type
 
-import torch
-
 from configuration.config import get_logger
-from data.finetuning.datasets import CivilCommentsDataset, JigsawToxicityDataset, SST2Dataset
+from data.finetuning.datasets import CivilCommentsDataset, JigsawToxicityDataset, SST2Dataset, FineTuningDataset
 
 log = get_logger(__name__)
 
@@ -14,7 +12,7 @@ def load_data(
         transformation: Optional[Callable[[Any], Any]] = None,
         n_train: Optional[int] = None,
         n_test: Optional[int] = None
-) -> Tuple[torch.utils.data.Dataset, torch.utils.data.Dataset]:
+) -> Tuple[FineTuningDataset, FineTuningDataset]:
     """
 
 
@@ -26,7 +24,7 @@ def load_data(
         n_test (Optional[int], optional): Number of test samples.
 
     Returns:
-
+        Tuple[torch.utils.data.Dataset, torch.utils.data.Dataset]: Training and test datasets.
     """
     dataset_class = _get_dataset_class(dataset)
     return _create_train_test_datasets(dataset_class, dataset_dir, transformation, n_train, n_test)
@@ -57,7 +55,7 @@ def _get_dataset_class(dataset: str) -> Type:
 
 def _create_train_test_datasets(dataset_class: Type, dataset_dir: str, transformation: Optional[Callable],
                                 n_train: Optional[int], n_test: Optional[int]) \
-        -> Tuple[torch.utils.data.Dataset, torch.utils.data.Dataset]:
+        -> Tuple[FineTuningDataset, FineTuningDataset]:
     """
     Create training and test datasets.
 
@@ -69,7 +67,7 @@ def _create_train_test_datasets(dataset_class: Type, dataset_dir: str, transform
         n_test (Optional[int]): Number of test samples.
 
     Returns:
-        Tuple[torch.utils.data.Dataset, torch.utils.data.Dataset]: Training and test datasets.
+        Tuple[FineTuningDataset, FineTuningDataset]: Training and test datasets.
     """
     train_dataset = dataset_class(dataset_dir=dataset_dir, split='train', n_samples=n_train,
                                   transformation=transformation)

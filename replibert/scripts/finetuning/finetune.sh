@@ -1,7 +1,11 @@
 #!/bin/bash
 
-#SBATCH --partition=gpu-5h
-#SBATCH --gpus-per-node=10gb:1
+#SBATCH --partition=gpu-teaching-2d
+#SBATCH --gpus-per-node=8
+#SBATCH --gres-flags=enforce-binding
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=8
+#SBATCH --cpus-per-task=4
 
 # Check if the script is being executed or submitted
 if [ -z "$SLURM_JOB_ID" ]; then
@@ -10,8 +14,33 @@ if [ -z "$SLURM_JOB_ID" ]; then
     exit
 fi
 
+# Set MASTER_ADDR to the hostname of the first node
+MASTER_ADDR=localhost
+MASTER_PORT=29500
+
+echo "MASTER_ADDR: $MASTER_ADDR"
+echo "MASTER_PORT: $MASTER_PORT"
+echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
+
 options="$@"
 
 echo 'Running replibert...'
-apptainer run --bind /home/space/datasets:/home/space/datasets pml.sif python replibert/main.py finetune $options
-echo 'Replibert execution completed.'
+
+srun --ntasks-per-node=$SLURM_NTASKS_PER_NODE bash -c "
+# Extract the GPU or MIG device for this task
+GPU_LIST=(${CUDA_VISIBLE_DEVICES//,/ })
+ASSIGNED_GPU=\${GPU_LIST[\$SLURM_LOCALID]}
+export CUDA_VISIBLE_DEVICES=\$ASSIGNED_GPU
+echo \"Task \$SLURM_PROCID running on GPU \$CUDA_VISIBLE_DEVICES\"
+
+# Set the distributed vars
+export RANK=\$SLURM_PROCID
+export WORLD_SIZE=\$SLURM_NTASKS_PER_NODE
+export MASTER_ADDR=$MASTER_ADDR
+export MASTER_PORT=$MASTER_PORT
+
+apptainer run --nv --bind /home/space/datasets:/home/space/datasets pml.sif \
+    python replibert/main.py finetune $options
+"
+
+echo "Replibert execution completed."
