@@ -10,8 +10,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
 from configuration.config import settings, get_logger
-from data.finetuning.transform import bert_tokenize
-from data.utils import load_data
+from data.finetuning.datasets import FineTuningDataset
 from finetuning.evaluate import evaluate
 from model.initialize import initialize_with_weights
 from model.model import Bert, BertToxic
@@ -20,14 +19,14 @@ from utils import get_available_cpus, is_main_process
 log = get_logger(__name__)
 
 
-def finetune(dataset: str, dataset_dir: str, weights_dir: Optional[str] = None, config: dict = settings["finetuning"]) \
-        -> None:
+def finetune(train_dataset: FineTuningDataset, test_dataset: FineTuningDataset, weights_dir: Optional[str] = None,
+             config: dict = settings["finetuning"]) -> None:
     """
     Fine-tunes a BERT model on the specified dataset using distributed data parallel.
 
     Args:
-        dataset (str): The name of the dataset.
-        dataset_dir (str): The directory where the dataset is located.
+        train_dataset (FineTuningDataset): Training dataset.
+        test_dataset (FineTuningDataset): Testing dataset.
         weights_dir (Optional[str]): Directory to save the model weights.
         config (dict): Configuration settings.
     """
@@ -35,8 +34,8 @@ def finetune(dataset: str, dataset_dir: str, weights_dir: Optional[str] = None, 
     log.info(f"Running finetuning on {world_size} GPUs but only logging from rank {rank}.")
     device = torch.device(f'cuda:{rank}')
 
-    log.info(f"Preparing data loaders for {dataset}...")
-    train_loader, test_loader = _get_data_loader(dataset, dataset_dir, rank, world_size, config)
+    log.info(f"Preparing data loaders...")
+    train_loader, test_loader = _get_data_loader(train_dataset, test_dataset, rank, world_size, config)
     model = _initialize_model(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank])
     optimizer, criterion, scaler = _initialize_training_components(model, config)
@@ -67,13 +66,14 @@ def _initialize_distributed() -> Tuple[int, int]:
     return rank, min(world_size, device_count)
 
 
-def _get_data_loader(dataset: str, dataset_dir: str, rank: int, world_size: int, config: dict = settings["finetuning"]):
+def _get_data_loader(train_dataset: FineTuningDataset, test_dataset: FineTuningDataset, rank: int, world_size: int,
+                     config: dict = settings["finetuning"]) -> Tuple[DataLoader, DataLoader]:
     """
     Loads the training and testing data loaders with DistributedSampler.
 
     Args:
-        dataset (str): Dataset name.
-        dataset_dir (str): Dataset directory.
+        train_dataset (FineTuningDataset): Training dataset.
+        test_dataset (FineTuningDataset): Testing dataset.
         rank (int): Process rank.
         world_size (int): Total number of processes.
         config (dict, optional): Configuration settings.
@@ -81,16 +81,6 @@ def _get_data_loader(dataset: str, dataset_dir: str, rank: int, world_size: int,
     Returns:
         tuple: Training and testing data loaders.
     """
-    train_dataset, test_dataset = load_data(
-        dataset=dataset,
-        dataset_dir=dataset_dir,
-        n_train=config["n_train"],
-        n_test=config["n_test"]
-    )
-
-    bert_tokenize(train_dataset)
-    bert_tokenize(test_dataset)
-
     train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
     test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False)
 

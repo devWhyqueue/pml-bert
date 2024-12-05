@@ -168,8 +168,19 @@ def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
     weights_dir (str): Directory to save the model weights.
     """
     from finetuning.classification import finetune as finetune_model
+    from data.utils import load_data
+    from data.finetuning.transform import bert_tokenize
 
-    finetune_model(dataset_name, dataset_dir, weights_dir)
+    train_dataset, test_dataset = load_data(
+        dataset=dataset_name,
+        dataset_dir=dataset_dir,
+        n_train=settings["n_train"],
+        n_test=settings["n_test"]
+    )
+    bert_tokenize(train_dataset)
+    bert_tokenize(test_dataset)
+
+    finetune_model(train_dataset, test_dataset, weights_dir)
     log.info(f"Fine-tuning completed for dataset {dataset_name}.")
 
 
