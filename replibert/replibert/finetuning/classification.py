@@ -15,7 +15,7 @@ from data.utils import load_data
 from finetuning.evaluate import evaluate
 from model.initialize import initialize_with_weights
 from model.model import Bert, BertToxic
-from utils import get_available_cpus
+from utils import get_available_cpus, is_main_process
 
 log = get_logger(__name__)
 
@@ -208,7 +208,7 @@ def _finetune_one_epoch(config: dict, criterion: nn.Module, model: nn.Module, op
     total_samples = 0
     running_loss = 0.0
     for batch_idx, (inputs, labels) in enumerate(
-            tqdm(train_loader, desc="Fine-tuning", unit="batch", dynamic_ncols=True, disable=(dist.get_rank() != 0))
+            tqdm(train_loader, desc="Fine-tuning", unit="batch", dynamic_ncols=True, disable=not is_main_process())
     ):
         input_ids, attention_mask, labels = _process_batch(inputs, labels, config)
 

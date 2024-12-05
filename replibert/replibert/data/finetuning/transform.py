@@ -2,6 +2,7 @@ import re
 
 import nltk
 import torch
+from datasets import disable_progress_bar
 from nltk import WordNetLemmatizer, word_tokenize
 from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -9,7 +10,7 @@ from transformers import BertTokenizer
 
 from configuration.config import get_logger
 from data.finetuning.datasets import FineTuningDataset
-from utils import get_available_cpus
+from utils import get_available_cpus, is_main_process
 
 try:
     nltk.data.find('stopwords')
@@ -78,6 +79,8 @@ def bert_tokenize(dataset: FineTuningDataset):
         }
 
     log.info(f"Tokenizing dataset: {dataset.split}")
+    if not is_main_process():
+        disable_progress_bar()
     dataset.hf_dataset = dataset.hf_dataset.map(
         _tokenize_batch,
         batched=True,

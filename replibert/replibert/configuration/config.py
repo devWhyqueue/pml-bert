@@ -4,8 +4,9 @@ from pathlib import Path
 
 import torch.multiprocessing
 import yaml
-from torch.distributed import is_initialized, get_rank
 from transformers import logging as tfl
+
+from utils import is_main_process
 
 # App Config
 with open(Path(__file__).parent / "app.yaml", "r") as file:
@@ -21,7 +22,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 class RankFilter(logging.Filter):
     def filter(self, record):
-        return not is_initialized() or get_rank() == 0
+        return is_main_process()
 
 
 def get_logger(name: str) -> Logger:
