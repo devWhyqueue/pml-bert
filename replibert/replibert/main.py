@@ -76,7 +76,7 @@ def combine(dataset_dirs: tuple[str], destination: str, keep: list[str], shards:
 @click.option("--destination", type=click.Path(), help="Directory where the tokenized dataset will be saved.")
 @click.option("--start_index", type=int, help="First shard index to tokenize.")
 @click.option("--end_index", type=int, help="Last shard index to tokenize (exclusive).")
-def tokenize(dataset_dir: str, destination: str, start_index: int, end_index: int):
+def spanify(dataset_dir: str, destination: str, start_index: int, end_index: int):
     """
     Splits docs into spans and tokenizes specified shard range of the dataset.
 
@@ -157,6 +157,33 @@ def baseline(dataset_name: str, dataset_dir: str, n_train: int = None, n_test: i
               help="Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred', 'sst2'.")
 @click.option("--dataset_dir", type=click.Path(exists=True), required=True,
               help="Directory containing the dataset to process.")
+@click.option("--destination", type=click.Path(), help="Directory where the tokenized dataset will be saved.")
+def tokenize(dataset_name: str, dataset_dir: str, destination: str):
+    """
+    Tokenizes the specified dataset and saves it to the destination directory.
+
+    Parameters:
+    dataset_name (str): Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred', 'sst2'.
+    dataset_dir (str): Directory containing the dataset to process.
+    destination (str): Directory where the tokenized dataset will be saved.
+
+    This function loads the specified dataset, tokenizes it using BERT, and saves the combined tokenized dataset to the destination directory.
+    """
+    from data.utils import load_data
+    from data.finetuning.transform import bert_tokenize
+
+    train_dataset, test_dataset = load_data(dataset=dataset_name, dataset_dir=dataset_dir)
+    bert_tokenize(train_dataset)
+    bert_tokenize(test_dataset)
+    combined = train_dataset.hf_dataset.concatenate(test_dataset.hf_dataset)
+    combined.save_to_disk(destination)
+
+
+@cli.command()
+@click.option("--dataset_name", type=click.Choice(['civil_comments', 'jigsaw_toxicity_pred', 'sst2']), required=True,
+              help="Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred', 'sst2'.")
+@click.option("--dataset_dir", type=click.Path(exists=True), required=True,
+              help="Directory containing the dataset to process.")
 @click.option("--weights_dir", type=click.Path(), help="Directory to save the model weights.")
 def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
     """
@@ -169,7 +196,6 @@ def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
     """
     from finetuning.classification import finetune as finetune_model
     from data.utils import load_data
-    from data.finetuning.transform import bert_tokenize
 
     train_dataset, test_dataset = load_data(
         dataset=dataset_name,
@@ -177,8 +203,6 @@ def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
         n_train=settings["n_train"],
         n_test=settings["n_test"]
     )
-    bert_tokenize(train_dataset)
-    bert_tokenize(test_dataset)
 
     finetune_model(train_dataset, test_dataset, weights_dir)
     log.info(f"Fine-tuning completed for dataset {dataset_name}.")
