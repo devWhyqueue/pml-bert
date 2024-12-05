@@ -13,16 +13,16 @@ data:
       short: 'civil_comments'
       name: null
       split: null
-    - identifier: 'google/jigsaw_toxicity_pred'
-      short: 'jigsaw_toxicity_pred'
-      name: null
-      split: null
-      config_kwargs:
-        data_dir: 'data/jigsaw_toxicity_pred'
-    - identifier: 'stanfordnlp/sst2'
-      short: 'sst2'
-      name: null
-      split: null
+#    - identifier: 'google/jigsaw_toxicity_pred'
+#      short: 'jigsaw_toxicity_pred'
+#      name: null
+#      split: null
+#      config_kwargs:
+#        data_dir: 'data/jigsaw_toxicity_pred'
+#    - identifier: 'stanfordnlp/sst2'
+#      short: 'sst2'
+#      name: null
+#      split: null
 
 
 model:
