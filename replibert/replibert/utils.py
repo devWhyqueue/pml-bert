@@ -18,7 +18,7 @@ def get_available_cpus(max_cpus: int = 32) -> int:
     Returns:
         int: The number of available CPUs.
     """
-    world_size = abs(get_world_size())
+    world_size = get_world_size() if is_initialized() else 1
     cpu_count = os.cpu_count()
     slurm_cpus = int(os.getenv("SLURM_CPUS_PER_TASK", max_cpus))
     available = min(cpu_count, slurm_cpus) // world_size

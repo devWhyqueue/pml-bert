@@ -183,7 +183,7 @@ def tokenize(dataset_name: str, dataset_dir: str, destination: str):
 @click.option("--dataset_name", type=click.Choice(['civil_comments', 'jigsaw_toxicity_pred', 'sst2']), required=True,
               help="Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred', 'sst2'.")
 @click.option("--dataset_dir", type=click.Path(exists=True), required=True,
-              help="Directory containing the dataset to process.")
+              help="Directory containing the tokenized dataset to process.")
 @click.option("--weights_dir", type=click.Path(), help="Directory to save the model weights.")
 def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
     """
@@ -203,6 +203,10 @@ def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
         n_train=settings["n_train"],
         n_test=settings["n_test"]
     )
+
+    # Assumes tokenization
+    train_dataset.input_field = ['input_ids', 'attention_mask']
+    test_dataset.input_field = ['input_ids', 'attention_mask']
 
     finetune_model(train_dataset, test_dataset, weights_dir)
     log.info(f"Fine-tuning completed for dataset {dataset_name}.")
