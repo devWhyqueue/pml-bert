@@ -37,5 +37,5 @@ finetuning:
   learning_rate: 0.00001
   device: "cuda"
   num_epochs: 1
-  n_train: null
+  n_train: 100000
   n_test: null
