@@ -26,15 +26,22 @@ nvidia-smi -L
 
 options="$@"
 
-echo 'Running replibert with torchrun...'
+echo 'Running replibert...'
 
 # Use srun to launch one task per GPU and properly assign CUDA_VISIBLE_DEVICES
-srun --ntasks-per-node=$SLURM_NTASKS --gpus-per-task=1 bash -c "
-# Extract the correct GPU or MIG device for this task
+srun --ntasks-per-node=$SLURM_NTASKS_PER_NODE --gpus-per-task=1 bash -c "
+# Extract the GPU or MIG device for this task
 GPU_LIST=(${CUDA_VISIBLE_DEVICES//,/ })
 ASSIGNED_GPU=\${GPU_LIST[\$SLURM_LOCALID]}
 export CUDA_VISIBLE_DEVICES=\$ASSIGNED_GPU
 echo \"Task \$SLURM_PROCID running on GPU \$CUDA_VISIBLE_DEVICES\"
+
+# Set the distributed vars
+export RANK=\$SLURM_PROCID
+export WORLD_SIZE=\$SLURM_NTASKS_PER_NODE
+
+echo \" RANK: \$RANK\"
+echo \" WORLD_SIZE: \$WORLD_SIZE\"
 
 apptainer run --nv --bind /home/space/datasets:/home/space/datasets pml.sif \
     python replibert/main.py finetune $options
