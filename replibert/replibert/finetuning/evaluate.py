@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from configuration.config import get_logger
 from model.model import BertToxic
@@ -48,7 +49,7 @@ def _calculate_loss(model: torch.nn.Module, test_loader: DataLoader, criterion: 
     total_correct = 0
     total_samples = 0
     with torch.no_grad():
-        for inputs, labels in test_loader:
+        for inputs, labels in tqdm(test_loader, desc="Evaluating", unit="batch"):
             input_ids = inputs[:, 0, :].to(device, non_blocking=True)
             attention_mask = inputs[:, 1, :].to(device, non_blocking=True)
             labels = labels.to(device).float()
