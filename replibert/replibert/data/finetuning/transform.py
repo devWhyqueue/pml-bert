@@ -2,7 +2,7 @@ import re
 
 import nltk
 import torch
-from datasets import disable_progress_bar
+from datasets import Dataset
 from nltk import WordNetLemmatizer, word_tokenize
 from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -10,7 +10,7 @@ from transformers import BertTokenizer
 
 from configuration.config import get_logger
 from data.finetuning.datasets import FineTuningDataset
-from utils import get_available_cpus, is_main_process
+from utils import get_available_cpus
 
 try:
     nltk.data.find('stopwords')
@@ -52,12 +52,13 @@ def tf_idf_vectorize(train_dataset: FineTuningDataset, val_dataset: FineTuningDa
         = test_dataset.hf_dataset.map(_transform_batch, batched=True, batch_size=512, desc="Vectorizing test dataset")
 
 
-def bert_tokenize(dataset: FineTuningDataset):
+def bert_tokenize(dataset: Dataset, text_field: str) -> Dataset:
     """
     Tokenizes the text data in the given dataset using the BERT tokenizer.
 
     Args:
-        dataset (FineTuningDataset): The dataset to tokenize.
+        dataset (Dataset): The HuggingFace dataset to tokenize.
+        text_field (str): The field containing the text data.
 
     Returns:
         None
@@ -65,7 +66,7 @@ def bert_tokenize(dataset: FineTuningDataset):
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", use_fast=True)
 
     def _tokenize_batch(batch):
-        texts = batch[dataset.text_field]
+        texts = batch[text_field]
         tokenized = tokenizer(
             texts,
             max_length=512,
@@ -78,18 +79,15 @@ def bert_tokenize(dataset: FineTuningDataset):
             'attention_mask': tokenized['attention_mask'].tolist()
         }
 
-    log.info(f"Tokenizing dataset: {dataset.split}")
-    if not is_main_process():
-        disable_progress_bar()
-    dataset.hf_dataset = dataset.hf_dataset.map(
+    dataset = dataset.map(
         _tokenize_batch,
         batched=True,
         batch_size=512,
         num_proc=get_available_cpus(),
-        desc=f"Tokenizing {dataset.split} dataset"
+        desc=f"Tokenizing dataset"
     )
 
-    dataset.input_field = ['input_ids', 'attention_mask']
+    return dataset
 
 
 def preprocess(datasets: list[FineTuningDataset]):

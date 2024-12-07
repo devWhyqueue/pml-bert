@@ -1,5 +1,4 @@
 import click
-from datasets import concatenate_datasets
 
 from configuration.config import get_logger, settings
 
@@ -154,30 +153,27 @@ def baseline(dataset_name: str, dataset_dir: str, n_train: int = None, n_test: i
 
 
 @cli.command()
-@click.option("--dataset_name", type=click.Choice(['civil_comments', 'jigsaw_toxicity_pred', 'sst2']), required=True,
-              help="Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred', 'sst2'.")
 @click.option("--dataset_dir", type=click.Path(exists=True), required=True,
               help="Directory containing the dataset to process.")
+@click.option("--text_field", type=str, required=True, help="Name of the field containing the text data.")
 @click.option("--destination", type=click.Path(), help="Directory where the tokenized dataset will be saved.")
-def tokenize(dataset_name: str, dataset_dir: str, destination: str):
+def tokenize(dataset_dir: str, text_field: str, destination: str):
     """
     Tokenizes the specified dataset and saves it to the destination directory.
 
     Parameters:
-    dataset_name (str): Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred', 'sst2'.
     dataset_dir (str): Directory containing the dataset to process.
+    text_field (str): Name of the field containing the text data.
     destination (str): Directory where the tokenized dataset will be saved.
 
     This function loads the specified dataset, tokenizes it using BERT, and saves the combined tokenized dataset to the destination directory.
     """
-    from data.utils import load_data
+    from datasets import load_from_disk
     from data.finetuning.transform import bert_tokenize
 
-    train_dataset, test_dataset = load_data(dataset=dataset_name, dataset_dir=dataset_dir)
-    bert_tokenize(train_dataset)
-    bert_tokenize(test_dataset)
-    combined = concatenate_datasets([train_dataset.hf_dataset, test_dataset.hf_dataset])
-    combined.save_to_disk(destination)
+    dataset = load_from_disk(dataset_dir)
+    bert_tokenize(dataset, text_field)
+    dataset.save_to_disk(destination)
 
 
 @cli.command()
