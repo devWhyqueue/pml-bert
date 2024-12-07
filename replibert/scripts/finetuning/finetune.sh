@@ -26,12 +26,14 @@ echo "MASTER_PORT: $MASTER_PORT"
 echo "NODE_COUNT: $NODE_COUNT"
 echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 
+nvidia-smi -L
+
 options="$@"
 
 echo 'Running replibert with torchrun...'
 
 # Use srun to launch one task per GPU
-srun --ntasks=GPUS_PER_NODE --gpus-per-task=1 bash -c '
+srun --ntasks=$GPUS_PER_NODE --gpus-per-task=1 bash -c '
 export CUDA_VISIBLE_DEVICES=$SLURM_LOCALID  # Assign each task one GPU
 echo "Task $SLURM_PROCID running on GPU $CUDA_VISIBLE_DEVICES"
 apptainer run --nv --bind /home/space/datasets:/home/space/datasets pml.sif \
