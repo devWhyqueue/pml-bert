@@ -172,7 +172,7 @@ def tokenize(dataset_dir: str, text_field: str, destination: str):
     from data.finetuning.transform import bert_tokenize
 
     dataset = load_from_disk(dataset_dir)
-    bert_tokenize(dataset, text_field)
+    dataset = bert_tokenize(dataset, text_field)
     dataset.save_to_disk(destination)
 
 

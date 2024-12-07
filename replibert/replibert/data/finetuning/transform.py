@@ -84,7 +84,7 @@ def bert_tokenize(dataset: Dataset, text_field: str) -> Dataset:
         batched=True,
         batch_size=512,
         num_proc=get_available_cpus(),
-        desc=f"Tokenizing dataset"
+        desc="Tokenizing dataset"
     )
 
     return dataset
