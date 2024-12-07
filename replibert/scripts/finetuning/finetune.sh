@@ -24,40 +24,19 @@ MASTER_PORT=12355
 echo "MASTER_ADDR: $MASTER_ADDR"
 echo "MASTER_PORT: $MASTER_PORT"
 echo "NODE_COUNT: $NODE_COUNT"
-echo "CUDA_VISIBLE_DEVICES before filtering: $CUDA_VISIBLE_DEVICES"
-
-echo "Querying GPU information..."
-gpu_map=$(nvidia-smi --query-gpu=index,uuid --format=csv,noheader)
-
-# Parse GPU mapping and filter unique physical GPUs
-declare -A physical_gpus
-visible_devices=""
-while IFS=',' read -r index uuid; do
-    physical_gpu_id=${uuid%%-*}  # Extract physical GPU part from UUID
-    if [[ -z "${physical_gpus[$physical_gpu_id]}" ]]; then
-        physical_gpus[$physical_gpu_id]=1
-        if [[ -z "$visible_devices" ]]; then
-            visible_devices=$index
-        else
-            visible_devices="$visible_devices,$index"
-        fi
-    fi
-done <<< "$gpu_map"
-
-export CUDA_VISIBLE_DEVICES=$visible_devices
-echo "CUDA_VISIBLE_DEVICES set to: $CUDA_VISIBLE_DEVICES"
+echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 
 options="$@"
 
 echo 'Running replibert with torchrun...'
 
+# Use srun to launch one task per GPU
+srun --ntasks=GPUS_PER_NODE --gpus-per-task=1 bash -c '
+export CUDA_VISIBLE_DEVICES=$SLURM_LOCALID  # Assign each task one GPU
+echo "Task $SLURM_PROCID running on GPU $CUDA_VISIBLE_DEVICES"
 apptainer run --nv --bind /home/space/datasets:/home/space/datasets pml.sif \
-    torchrun \
-    --nnodes=$NODE_COUNT \
-    --nproc_per_node=$GPUS_PER_NODE \
-    --rdzv_backend=c10d \
-    --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
-    replibert/main.py finetune $options
+    python replibert/main.py finetune $options
+'
 
 echo 'Replibert execution completed.'
 
