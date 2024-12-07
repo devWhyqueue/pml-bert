@@ -31,7 +31,9 @@ def finetune(train_dataset: FineTuningDataset, test_dataset: FineTuningDataset, 
         config (dict): Configuration settings.
     """
     rank, world_size = _initialize_distributed()
-    log.info(f"Running finetuning on {world_size} GPUs but only logging from rank {rank}.")
+    # Debug
+    for i in range(torch.cuda.device_count()):
+        print(torch.cuda.get_device_properties(i).name)
     device = torch.device(f'cuda:{rank}')
 
     log.info("Preparing data loaders...")
