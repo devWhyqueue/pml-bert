@@ -201,8 +201,8 @@ def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
     train_dataset, test_dataset = load_data(
         dataset=dataset_name,
         dataset_dir=dataset_dir,
-        n_train=settings["n_train"],
-        n_test=settings["n_test"]
+        n_train=settings['finetuning']["n_train"],
+        n_test=settings['finetuning']["n_test"]
     )
 
     # Assumes tokenization
