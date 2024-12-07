@@ -32,12 +32,12 @@ def finetune(train_dataset: FineTuningDataset, test_dataset: FineTuningDataset, 
     """
     rank, world_size = _initialize_distributed()
     log.info(f"Rank: {rank}, World size: {world_size}")
-    device = torch.device(f'cuda:{rank}')
+    device = torch.device('cuda:0')
 
     log.info("Preparing data loaders...")
     train_loader, test_loader = _get_data_loader(train_dataset, test_dataset, rank, world_size, config)
     model = _initialize_model(device)
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank])
+    model = torch.nn.parallel.DistributedDataParallel(model)
     optimizer, criterion, scaler = _initialize_training_components(model, config)
     _train_model(model, train_loader, optimizer, criterion, scaler, config)
 
@@ -59,10 +59,8 @@ def _initialize_distributed() -> Tuple[int, int]:
     """
     dist.init_process_group(backend='nccl', timeout=timedelta(seconds=30))
     world_size = dist.get_world_size()
-    device_count = torch.cuda.device_count()
-    rank = dist.get_rank() % torch.cuda.device_count()
-    torch.cuda.set_device(rank)
-    return rank, min(world_size, device_count)
+    rank = dist.get_rank()
+    return rank, world_size
 
 
 def _get_data_loader(train_dataset: FineTuningDataset, test_dataset: FineTuningDataset, rank: int, world_size: int,
