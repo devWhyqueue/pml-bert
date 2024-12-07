@@ -31,12 +31,11 @@ def finetune(train_dataset: FineTuningDataset, test_dataset: FineTuningDataset, 
         config (dict): Configuration settings.
     """
     rank, world_size = _initialize_distributed()
-    log.info(f"Rank: {rank}, World size: {world_size}")
-    device = torch.device('cuda:0')
+    log.info(f"Finetuning on {world_size} devices...")
 
     log.info("Preparing data loaders...")
     train_loader, test_loader = _get_data_loader(train_dataset, test_dataset, rank, world_size, config)
-    model = _initialize_model(device)
+    model = _initialize_model(config["device"])
     model = torch.nn.parallel.DistributedDataParallel(model)
     optimizer, criterion, scaler = _initialize_training_components(model, config)
     _train_model(model, train_loader, optimizer, criterion, scaler, config)
@@ -64,7 +63,7 @@ def _initialize_distributed() -> Tuple[int, int]:
 
 
 def _get_data_loader(train_dataset: FineTuningDataset, test_dataset: FineTuningDataset, rank: int, world_size: int,
-                     config: dict = settings["finetuning"]) -> Tuple[DataLoader, DataLoader]:
+                     config: dict) -> Tuple[DataLoader, DataLoader]:
     """
     Loads the training and testing data loaders with DistributedSampler.
 
@@ -93,12 +92,12 @@ def _get_data_loader(train_dataset: FineTuningDataset, test_dataset: FineTuningD
     return train_loader, test_loader
 
 
-def _initialize_model(device: torch.device) -> BertToxic:
+def _initialize_model(device: str) -> BertToxic:
     """
     Initializes the BERT model with pre-trained weights for binary classification.
 
     Args:
-        device (torch.device): The device to perform computation on.
+        device (str): The device to perform computation on.
 
     Returns:
         BertToxic: The initialized BERT model.
@@ -160,7 +159,7 @@ def _save_model_weights(model: nn.Module, weights_dir: str) -> None:
     torch.save(model.module.state_dict(), f"{weights_dir}/bert_toxic_weights.pth")
 
 
-def _evaluate_model(model: nn.Module, test_loader: DataLoader, criterion: nn.Module, device: torch.device) -> None:
+def _evaluate_model(model: nn.Module, test_loader: DataLoader, criterion: nn.Module, device: str) -> None:
     """
     Evaluates the model.
 
@@ -168,7 +167,7 @@ def _evaluate_model(model: nn.Module, test_loader: DataLoader, criterion: nn.Mod
         model (nn.Module): The model to be evaluated.
         test_loader (DataLoader): The test data loader.
         criterion (nn.Module): The loss function.
-        device (torch.device): The device to perform computation on.
+        device (str): The device to perform computation on.
     """
     log.info("Evaluating trained model")
     evaluate(model.module, test_loader, criterion, device)

@@ -7,7 +7,7 @@ from model.model import BertToxic
 log = get_logger(__name__)
 
 
-def evaluate(model: torch.nn.Module, test_loader: DataLoader, criterion: torch.nn.modules.loss, device: torch.device):
+def evaluate(model: torch.nn.Module, test_loader: DataLoader, criterion: torch.nn.modules.loss, device: str):
     """
     Evaluate the performance of the given model on the test dataset.
 
@@ -15,7 +15,7 @@ def evaluate(model: torch.nn.Module, test_loader: DataLoader, criterion: torch.n
         model (BertToxic): The model to evaluate.
         test_loader (DataLoader): DataLoader for the test dataset.
         criterion (torch.nn.modules.loss): Loss function to use for evaluation.
-        device (torch.device): Device to run the evaluation on.
+        device (str): Device to run the evaluation on.
 
     Returns:
         tuple: A tuple containing the average loss and accuracy.

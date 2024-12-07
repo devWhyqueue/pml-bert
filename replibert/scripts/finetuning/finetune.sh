@@ -1,11 +1,11 @@
 #!/bin/bash
 
 #SBATCH --partition=gpu-teaching-2h
-#SBATCH --gpus-per-node=2
+#SBATCH --gpus-per-node=8
 #SBATCH --gres-flags=enforce-binding
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=2
-#SBATCH --cpus-per-task=16
+#SBATCH --ntasks-per-node=8
+#SBATCH --cpus-per-task=4
 
 # Check if the script is being executed or submitted
 if [ -z "$SLURM_JOB_ID" ]; then
@@ -41,9 +41,6 @@ export RANK=\$SLURM_PROCID
 export WORLD_SIZE=\$SLURM_NTASKS_PER_NODE
 export MASTER_ADDR=$MASTER_ADDR
 export MASTER_PORT=$MASTER_PORT
-
-echo \" RANK: \$RANK\"
-echo \" WORLD_SIZE: \$WORLD_SIZE\"
 
 apptainer run --nv --bind /home/space/datasets:/home/space/datasets pml.sif \
     python replibert/main.py finetune $options
