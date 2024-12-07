@@ -15,8 +15,8 @@ if [ -z "$SLURM_JOB_ID" ]; then
 fi
 
 # Set MASTER_ADDR to the hostname of the first node
-MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
-MASTER_PORT=12355
+MASTER_ADDR=localhost
+MASTER_PORT=29500
 
 echo "MASTER_ADDR: $MASTER_ADDR"
 echo "MASTER_PORT: $MASTER_PORT"
@@ -29,7 +29,7 @@ options="$@"
 echo 'Running replibert...'
 
 # Use srun to launch one task per GPU and properly assign CUDA_VISIBLE_DEVICES
-srun --ntasks-per-node=$SLURM_NTASKS_PER_NODE --gpus-per-task=1 bash -c "
+srun --ntasks-per-node=$SLURM_NTASKS_PER_NODE bash -c "
 # Extract the GPU or MIG device for this task
 GPU_LIST=(${CUDA_VISIBLE_DEVICES//,/ })
 ASSIGNED_GPU=\${GPU_LIST[\$SLURM_LOCALID]}
@@ -39,6 +39,8 @@ echo \"Task \$SLURM_PROCID running on GPU \$CUDA_VISIBLE_DEVICES\"
 # Set the distributed vars
 export RANK=\$SLURM_PROCID
 export WORLD_SIZE=\$SLURM_NTASKS_PER_NODE
+export MASTER_ADDR=$MASTER_ADDR
+export MASTER_PORT=$MASTER_PORT
 
 echo \" RANK: \$RANK\"
 echo \" WORLD_SIZE: \$WORLD_SIZE\"

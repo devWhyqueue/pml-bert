@@ -34,7 +34,7 @@ def finetune(train_dataset: FineTuningDataset, test_dataset: FineTuningDataset, 
     log.info(f"Running finetuning on {world_size} GPUs but only logging from rank {rank}.")
     device = torch.device(f'cuda:{rank}')
 
-    log.info(f"Preparing data loaders...")
+    log.info("Preparing data loaders...")
     train_loader, test_loader = _get_data_loader(train_dataset, test_dataset, rank, world_size, config)
     model = _initialize_model(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank])
@@ -60,7 +60,6 @@ def _initialize_distributed() -> Tuple[int, int]:
     dist.init_process_group(backend='nccl', timeout=timedelta(seconds=30))
     world_size = dist.get_world_size()
     device_count = torch.cuda.device_count()
-    log.info(f"World size is {world_size} and device count is {device_count}.")
     rank = dist.get_rank() % torch.cuda.device_count()
     torch.cuda.set_device(rank)
     return rank, min(world_size, device_count)
@@ -178,7 +177,7 @@ def _evaluate_model(model: nn.Module, test_loader: DataLoader, criterion: nn.Mod
 
 
 def _finetune_one_epoch(config: dict, criterion: nn.Module, model: nn.Module, optimizer: optim.Optimizer,
-                        train_loader: DataLoader, scaler: GradScaler, log_interval: int = 10_000) -> Tuple[float, int]:
+                        train_loader: DataLoader, scaler: GradScaler, log_interval: int = 1_000) -> Tuple[float, int]:
     """
     Performs one epoch of fine-tuning with mixed precision.
 
