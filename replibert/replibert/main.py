@@ -1,4 +1,5 @@
 import click
+from datasets import concatenate_datasets
 
 from configuration.config import get_logger, settings
 
@@ -175,7 +176,7 @@ def tokenize(dataset_name: str, dataset_dir: str, destination: str):
     train_dataset, test_dataset = load_data(dataset=dataset_name, dataset_dir=dataset_dir)
     bert_tokenize(train_dataset)
     bert_tokenize(test_dataset)
-    combined = train_dataset.hf_dataset.concatenate(test_dataset.hf_dataset)
+    combined = concatenate_datasets([train_dataset.hf_dataset, test_dataset.hf_dataset])
     combined.save_to_disk(destination)
 
 
