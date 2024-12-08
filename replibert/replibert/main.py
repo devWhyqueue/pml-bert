@@ -206,7 +206,6 @@ def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
     test_dataset.input_field = ['input_ids', 'attention_mask']
 
     finetune_model(train_dataset, test_dataset, weights_dir)
-    log.info(f"Fine-tuning completed for dataset {dataset_name}.")
 
 
 if __name__ == "__main__":
