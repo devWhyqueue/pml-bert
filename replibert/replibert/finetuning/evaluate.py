@@ -58,7 +58,7 @@ def _calculate_loss(model: torch.nn.Module, test_loader: DataLoader, criterion: 
         for inputs, labels in tqdm(test_loader, desc="Evaluating", unit="batch"):
             input_ids = inputs[:, 0, :].to(device, non_blocking=True)
             attention_mask = inputs[:, 1, :].to(device, non_blocking=True)
-            labels = labels.to(device).float()
+            labels = labels.to(device).long()
 
             logits = model(input_ids=input_ids, attention_mask=attention_mask).squeeze(-1)
             probabilities = torch.sigmoid(logits)
