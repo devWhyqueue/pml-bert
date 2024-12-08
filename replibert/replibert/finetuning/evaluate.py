@@ -1,9 +1,9 @@
 import torch
+from sklearn.metrics import classification_report, roc_auc_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from configuration.config import get_logger
-from model.model import BertToxic
 
 log = get_logger(__name__)
 
@@ -13,41 +13,47 @@ def evaluate(model: torch.nn.Module, test_loader: DataLoader, criterion: torch.n
     Evaluate the performance of the given model on the test dataset.
 
     Args:
-        model (BertToxic): The model to evaluate.
+        model (torch.nn.Module): The model to evaluate.
+        test_loader (DataLoader): DataLoader for the test dataset.
+        criterion (torch.nn.modules.loss): Loss function to use for evaluation.
+        device (str): Device to run the evaluation on.
+    """
+    model.eval()
+    total_loss, total_samples, all_labels, all_predictions, all_probabilities = _calculate_loss(
+        model, test_loader, criterion, device
+    )
+
+    avg_loss = total_loss / total_samples
+    log.info(f"Evaluation complete - Loss: {avg_loss:.4f}")
+
+    # Compute classification report
+    class_report = classification_report(all_labels, all_predictions, target_names=["class_0", "class_1"])
+    log.info(f"Classification Report:\n{class_report}")
+
+    # Compute ROC-AUC score
+    roc_auc = roc_auc_score(all_labels, all_probabilities, average="weighted")
+    log.info(f"ROC-AUC Score: {roc_auc:.4f}")
+
+
+def _calculate_loss(model: torch.nn.Module, test_loader: DataLoader, criterion: torch.nn.modules.loss, device: str):
+    """
+    Calculate the total loss and accuracy for the given model on the test dataset.
+
+    Args:
+        model (torch.nn.Module): The model to evaluate.
         test_loader (DataLoader): DataLoader for the test dataset.
         criterion (torch.nn.modules.loss): Loss function to use for evaluation.
         device (str): Device to run the evaluation on.
 
     Returns:
-        tuple: A tuple containing the average loss and accuracy.
-    """
-    model.eval()
-    total_correct, total_loss, total_samples = _calculate_loss(model, test_loader, criterion, device)
-
-    avg_loss = total_loss / total_samples
-    accuracy = total_correct / total_samples
-    log.info(f"Evaluation complete - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
-
-    return avg_loss, accuracy
-
-
-def _calculate_loss(model: torch.nn.Module, test_loader: DataLoader, criterion: torch.nn.modules.loss,
-                    device: torch.device):
-    """
-    Calculate the total loss and accuracy for the given model on the test dataset.
-
-    Args:
-        model (BertToxic): The model to evaluate.
-        test_loader (DataLoader): DataLoader for the test dataset.
-        criterion (torch.nn.modules.loss): Loss function to use for evaluation.
-        device (torch.device): Device to run the evaluation on.
-
-    Returns:
-        tuple: A tuple containing the total correct predictions, total loss, and total samples.
+        tuple: A tuple containing evaluation metrics and predictions/labels.
     """
     total_loss = 0
-    total_correct = 0
     total_samples = 0
+    all_predictions = []
+    all_labels = []
+    all_probabilities = []
+
     with torch.no_grad():
         for inputs, labels in tqdm(test_loader, desc="Evaluating", unit="batch"):
             input_ids = inputs[:, 0, :].to(device, non_blocking=True)
@@ -59,8 +65,12 @@ def _calculate_loss(model: torch.nn.Module, test_loader: DataLoader, criterion: 
             predictions = (probabilities > 0.5).long()
             loss = criterion(logits, labels)
 
-            total_correct += (predictions == labels.long()).sum().item()
             total_samples += labels.size(0)
             total_loss += loss.item() * labels.size(0)
 
-    return total_correct, total_loss, total_samples
+            # Store predictions and labels for metrics
+            all_predictions.extend(predictions.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+            all_probabilities.extend(probabilities.cpu().numpy())
+
+    return total_loss, total_samples, all_labels, all_predictions, all_probabilities
