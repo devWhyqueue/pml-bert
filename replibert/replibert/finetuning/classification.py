@@ -30,6 +30,7 @@ def finetune(train_dataset: FineTuningDataset, test_dataset: FineTuningDataset, 
         config (dict): Configuration settings.
     """
     rank, world_size = _initialize_distributed()
+    config["device"] = f"cuda:{rank}"
     log.info(f"Finetuning on {world_size} devices...")
 
     log.info("Preparing data loaders...")
