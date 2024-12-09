@@ -10,7 +10,6 @@ from transformers import BertTokenizer
 
 from configuration.config import get_logger
 from data.finetuning.datasets import FineTuningDataset
-from utils import get_available_cpus
 
 try:
     nltk.data.find('stopwords')
@@ -83,7 +82,7 @@ def bert_tokenize(dataset: Dataset, text_field: str) -> Dataset:
         _tokenize_batch,
         batched=True,
         batch_size=512,
-        num_proc=get_available_cpus(),
+        num_proc=3,
         desc="Tokenizing dataset"
     )
 

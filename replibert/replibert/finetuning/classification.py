@@ -13,7 +13,7 @@ from data.finetuning.datasets import FineTuningDataset
 from finetuning.evaluate import evaluate
 from model.initialize import initialize_with_weights
 from model.model import Bert, BertToxic
-from utils import get_available_cpus, is_main_process
+from utils import is_main_process
 
 log = get_logger(__name__)
 
@@ -80,11 +80,11 @@ def _get_data_loader(train_dataset: FineTuningDataset, test_dataset: FineTuningD
 
     train_loader = DataLoader(
         train_dataset, batch_size=config["batch_size"], sampler=train_sampler,
-        num_workers=get_available_cpus(), pin_memory=True
+        num_workers=2, pin_memory=True
     )
     test_loader = DataLoader(
         test_dataset, batch_size=config["batch_size"], sampler=test_sampler,
-        num_workers=get_available_cpus(), pin_memory=True
+        num_workers=2, pin_memory=True
     )
 
     return train_loader, test_loader
