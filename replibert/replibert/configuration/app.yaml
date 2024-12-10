@@ -33,9 +33,10 @@ model:
   vocab_size: 30522
 
 finetuning:
-  batch_size: 32
-  learning_rate: 0.00001
+  batch_size: 16
+  learning_rate: 5e-5
+  weight_decay: 0.01
+  num_epochs: 1
   device: "cuda"
-  num_epochs: 3
   n_train: null
   n_test: null

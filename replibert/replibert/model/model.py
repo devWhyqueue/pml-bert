@@ -159,7 +159,6 @@ class BertToxic(nn.Module):
         super(BertToxic, self).__init__()
         self.bert = bert_model
         self.classifier = nn.Linear(config["hidden_size"], num_labels)
-        self.dropout = nn.Dropout(0.1)
 
     def forward(self, input_ids: torch.Tensor, token_type_ids: Optional[torch.Tensor] = None,
                 attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -176,6 +175,5 @@ class BertToxic(nn.Module):
         """
         hidden_states = self.bert(input_ids, token_type_ids, attention_mask)
         cls_token_state = hidden_states[:, 0, :]
-        cls_token_state = self.dropout(cls_token_state)
         logits = self.classifier(cls_token_state)
         return logits
