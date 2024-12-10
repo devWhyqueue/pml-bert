@@ -24,19 +24,17 @@ data:
       name: null
       split: null
 
-
 model:
   hidden_size: 768
   num_layers: 12
   num_heads: 12
-  max_position_embeddings: 512
+  max_position_embeddings: 256
   vocab_size: 30522
 
 finetuning:
+  dataset_fraction: 1.0
   batch_size: 16
   learning_rate: 5e-5
   weight_decay: 0.01
   num_epochs: 1
   device: "cuda"
-  n_train: null
-  n_test: null

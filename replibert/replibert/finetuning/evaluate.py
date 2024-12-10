@@ -13,12 +13,32 @@ from utils import is_main_process, _initialize_distributed, get_available_cpus
 log = get_logger(__name__)
 
 
-def evaluate(test_dataset: FineTuningDataset, weights: str | dict, config: dict = settings["finetuning"]):
+def evaluate_on_all_datasets(model: nn.Module, train_dataset: FineTuningDataset, val_dataset: FineTuningDataset,
+                             test_dataset: FineTuningDataset, config: dict):
     """
-    Evaluate the trained BERT model on the test dataset.
+    Evaluates the model on the training, validation, and testing datasets.
 
     Args:
-        test_dataset (FineTuningDataset): The test dataset.
+        model (nn.Module): The model to be evaluated.
+        train_dataset (FineTuningDataset): The training dataset.
+        val_dataset (FineTuningDataset): The validation dataset.
+        test_dataset (FineTuningDataset): The testing dataset.
+        config (dict): Configuration settings.
+    """
+    log.info("Evaluating model on training dataset")
+    evaluate(train_dataset, model.module.state_dict(), config)
+    log.info("Evaluating model on validation dataset")
+    evaluate(val_dataset, model.module.state_dict(), config)
+    log.info("Evaluating model on testing dataset")
+    evaluate(test_dataset, model.module.state_dict(), config)
+
+
+def evaluate(dataset: FineTuningDataset, weights: str | dict, config: dict = settings["finetuning"]):
+    """
+    Evaluate the model on the given dataset.
+
+    Args:
+        dataset (FineTuningDataset): The dataset to evaluate on.
         weights (str | dict): Path to the model weights or the state dictionary.
         config (dict): Configuration settings.
 
@@ -26,11 +46,10 @@ def evaluate(test_dataset: FineTuningDataset, weights: str | dict, config: dict 
         None
     """
     rank, world_size = _initialize_distributed()
-    log.info(f"Evaluating on {world_size} devices...")
 
-    test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False)
+    test_sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False)
     test_loader = DataLoader(
-        test_dataset, batch_size=config["batch_size"], sampler=test_sampler,
+        dataset, batch_size=config["batch_size"], sampler=test_sampler,
         num_workers=get_available_cpus(), pin_memory=True
     )
 
