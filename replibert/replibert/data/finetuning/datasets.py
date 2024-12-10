@@ -3,7 +3,7 @@ from typing import Callable, Tuple, Optional
 
 import numpy as np
 import torch
-from datasets import load_from_disk, concatenate_datasets
+from datasets import load_from_disk
 
 
 class FineTuningDataset(torch.utils.data.Dataset, ABC):
@@ -16,38 +16,22 @@ class FineTuningDataset(torch.utils.data.Dataset, ABC):
         dataset_dir (str, optional): Directory where the dataset is stored. Defaults to None.
         hf_dataset (optional): Pre-loaded Hugging Face dataset. Defaults to None.
         split (str, optional): Dataset split to use (e.g., 'train', 'test'). Defaults to 'train'.
-        n_samples (int, optional): Number of samples to use from the dataset. Defaults to None.
         transformation (Callable, optional): Transformation function to apply to each example (text). Defaults to None.
     """
 
-    def __init__(self, input_field: str, text_field: str, dataset_dir: str = None, hf_dataset=None,
-                 split: str = 'train', n_samples: Optional[int] = None, transformation: Optional[Callable] = None):
-        self.input_field = input_field
+    def __init__(self, text_field: str, input_field: str, label_col: str, dataset_dir: str = None, hf_dataset=None,
+                 split: str = 'train', transformation: Optional[Callable] = None):
         self.text_field = text_field
+        self.input_field = input_field
+        self.label_col = label_col
         self.dataset_dir = dataset_dir
         self.split = split
-        self.n_samples = n_samples
         self.transformation = transformation
 
         if hf_dataset is not None:
             self.hf_dataset = hf_dataset
         else:
-            self._load_hf_dataset(dataset_dir, split)
-            if n_samples is not None:
-                self.hf_dataset = self.hf_dataset.select(range(min(n_samples, len(self.hf_dataset))))
-
-    def _load_hf_dataset(self, dataset_dir: str, split: str):
-        """
-        Load the Hugging Face dataset from disk.
-
-        Args:
-            dataset_dir (str): Directory where the dataset is stored.
-            split (str): Dataset split to use (e.g., 'train', 'test').
-
-        Sets:
-            self.hf_dataset: Loaded dataset split.
-        """
-        self.hf_dataset = load_from_disk(dataset_dir)[split]
+            self.hf_dataset = load_from_disk(dataset_dir)[split]
 
     def __len__(self) -> int:
         """
@@ -117,15 +101,8 @@ class FineTuningDataset(torch.utils.data.Dataset, ABC):
 
 class CivilCommentsDataset(FineTuningDataset):
     def __init__(self, input_field: str = "tf_idf", dataset_dir: str = None, hf_dataset=None, split: str = 'train',
-                 n_samples: Optional[int] = None, transformation: Optional[Callable] = None):
-        super().__init__(input_field, "text", dataset_dir, hf_dataset, split, n_samples, transformation)
-
-    def _load_hf_dataset(self, dataset_dir: str, split: str):
-        if split == 'train':
-            dataset = load_from_disk(dataset_dir)
-            self.hf_dataset = concatenate_datasets([dataset['train'], dataset['validation']])
-        else:
-            super()._load_hf_dataset(dataset_dir, split)
+                 transformation: Optional[Callable] = None):
+        super().__init__("text", input_field, "toxicity", dataset_dir, hf_dataset, split, transformation)
 
     def get_label(self, item: dict) -> torch.tensor:
         return torch.tensor(item["toxicity"], dtype=torch.float32)
@@ -136,8 +113,8 @@ class CivilCommentsDataset(FineTuningDataset):
 
 class JigsawToxicityDataset(FineTuningDataset):
     def __init__(self, input_field: str = "tf_idf", dataset_dir: str = None, hf_dataset=None, split: str = 'train',
-                 n_samples: Optional[int] = None, transformation: Optional[Callable] = None):
-        super().__init__(input_field, "comment_text", dataset_dir, hf_dataset, split, n_samples, transformation)
+                 transformation: Optional[Callable] = None):
+        super().__init__("comment_text", input_field, "toxic", dataset_dir, hf_dataset, split, transformation)
 
     def get_label(self, item: dict) -> torch.tensor:
         yi = torch.tensor([
@@ -164,8 +141,8 @@ class JigsawToxicityDataset(FineTuningDataset):
 
 class SST2Dataset(FineTuningDataset):
     def __init__(self, input_field: str = "tf_idf", dataset_dir: str = None, hf_dataset=None, split: str = 'train',
-                 n_samples: Optional[int] = None, transformation: Optional[Callable] = None):
-        super().__init__(input_field, "sentence", dataset_dir, hf_dataset, split, n_samples, transformation)
+                 transformation: Optional[Callable] = None):
+        super().__init__("sentence", input_field, "label", dataset_dir, hf_dataset, split, transformation)
 
     def get_label(self, item: dict) -> torch.tensor:
         yi = torch.tensor(item["label"], dtype=torch.int8)

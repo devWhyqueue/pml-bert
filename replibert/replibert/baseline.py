@@ -9,7 +9,7 @@ from sklearn.metrics import classification_report, roc_auc_score
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
 from sklearn.utils import resample
-from torch.utils.data import Subset, random_split
+from torch.utils.data import Subset
 
 from configuration.config import get_logger
 from data.finetuning.datasets import FineTuningDataset
@@ -18,17 +18,15 @@ from data.finetuning.transform import tf_idf_vectorize, preprocess
 log = get_logger(__name__)
 
 
-def binary_classification(train_data: FineTuningDataset, test_data: FineTuningDataset):
+def binary_classification(train_data: FineTuningDataset, val_data: FineTuningDataset, test_data: FineTuningDataset):
     """
     Perform binary classification using various machine learning models and evaluate their performance.
 
     Args:
         train_data (FineTuningDataset): The training dataset.
+        val_data (FineTuningDataset): The validation dataset.
         test_data (FineTuningDataset): The test dataset.
     """
-    log.info("Splitting train data set...")
-    train_subset, val_subset = _split_train_dataset(train_data)
-
     log.info("Performing grid search for binary classification...")
     methods = [CalibratedClassifierCV(LinearSVC()), LogisticRegression(), RandomForestClassifier(), MultinomialNB()]
     do_preprocessing = [True, False]
@@ -38,35 +36,13 @@ def binary_classification(train_data: FineTuningDataset, test_data: FineTuningDa
             for pos_proportion in pos_proportions:
                 log.info(f"Using {method} with preprocessing={do_prep} and pos_proportion={pos_proportion}...")
                 x_train, y_train, x_val, y_val, x_test, y_test \
-                    = _prepare_data(train_subset.dataset, val_subset.dataset, test_data, do_prep, pos_proportion)
+                    = _prepare_data(train_data, val_data, test_data, do_prep, pos_proportion)
 
                 log.info(f"Fitting {method} model...")
                 binary_clf = method
                 binary_clf.fit(x_train, y_train)
 
                 _evaluate_model(binary_clf, x_train, y_train, x_val, y_val, x_test, y_test)
-
-
-def _split_train_dataset(train_data: FineTuningDataset) -> Tuple[Subset, Subset]:
-    """
-    Split the training dataset into training and validation subsets.
-
-    Args:
-        train_data (FineTuningDataset): The training dataset.
-
-    Returns:
-        Tuple[Subset, Subset]: The training and validation subsets.
-    """
-    train_size = len(train_data)
-    val_size = int(train_size * 0.1)
-    train_size = train_size - val_size
-    train_subset, val_subset = random_split(train_data, [train_size, val_size])
-    train_subset.dataset = deepcopy(train_subset.dataset)
-    val_subset.dataset = deepcopy(val_subset.dataset)
-    train_subset.dataset.hf_dataset = train_subset.dataset.hf_dataset.select(train_subset.indices)
-    val_subset.dataset.hf_dataset = val_subset.dataset.hf_dataset.select(val_subset.indices)
-
-    return train_subset, val_subset
 
 
 def _prepare_data(train_data: FineTuningDataset, val_data: FineTuningDataset, test_data: FineTuningDataset,

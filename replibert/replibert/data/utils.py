@@ -10,24 +10,56 @@ def load_data(
         dataset: str,
         dataset_dir: str,
         transformation: Optional[Callable[[Any], Any]] = None,
-        n_train: Optional[int] = None,
-        n_test: Optional[int] = None
-) -> Tuple[FineTuningDataset, FineTuningDataset]:
+        dataset_fraction: float = 1.0
+) -> Tuple[FineTuningDataset, FineTuningDataset, FineTuningDataset]:
     """
-
+    Load train, validation, and test datasets for a given dataset.
 
     Args:
         dataset (str): The name of the dataset to load ('civil_comments', 'jigsaw_toxicity_pred', 'sst2').
         dataset_dir (str): Directory where the dataset is stored.
         transformation (Callable[[Any], Any], optional): Transformation function to apply to each sample.
-        n_train (Optional[int], optional): Number of training samples.
-        n_test (Optional[int], optional): Number of test samples.
+        dataset_fraction (float, optional): Fraction of each split to use. For example, 0.5 means use half of each split.
 
     Returns:
-        Tuple[torch.utils.data.Dataset, torch.utils.data.Dataset]: Training and test datasets.
+        Tuple[FineTuningDataset, FineTuningDataset, FineTuningDataset]: Training, validation, and test datasets.
     """
     dataset_class = _get_dataset_class(dataset)
-    return _create_train_test_datasets(dataset_class, dataset_dir, transformation, n_train, n_test)
+
+    if dataset == 'civil_comments':
+        # Has train, validation, test splits directly
+        train_dataset = dataset_class(dataset_dir=dataset_dir, split='train', transformation=transformation)
+        val_dataset = dataset_class(dataset_dir=dataset_dir, split='validation', transformation=transformation)
+        test_dataset = dataset_class(dataset_dir=dataset_dir, split='test', transformation=transformation)
+
+    elif dataset == 'jigsaw_toxicity_pred':
+        # Has train and test only, no val split
+        train_dataset = dataset_class(dataset_dir=dataset_dir, split='train', transformation=transformation)
+        test_dataset = dataset_class(dataset_dir=dataset_dir, split='test', transformation=transformation)
+
+        # Create val split from train
+        train_dataset, val_dataset = _split_dataset(
+            dataset_class, train_dataset, test_size=0.1, transformation=transformation
+        )
+
+    elif dataset == 'sst2':
+        # Has train, validation, and test, but test is not usable
+        train_dataset = dataset_class(dataset_dir=dataset_dir, split='train', transformation=transformation)
+        val_dataset = dataset_class(dataset_dir=dataset_dir, split='validation', transformation=transformation)
+
+        # Discard official test, create our own test from train
+        train_dataset, test_dataset = _split_dataset(
+            dataset_class, train_dataset, test_size=0.1, transformation=transformation
+        )
+    else:
+        raise ValueError(f"Unknown dataset: {dataset}")
+
+    # Now apply dataset_size fraction to each split stratified by label
+    train_dataset = _subset_dataset(dataset_class, train_dataset, dataset_fraction, transformation=transformation)
+    val_dataset = _subset_dataset(dataset_class, val_dataset, dataset_fraction, transformation=transformation)
+    test_dataset = _subset_dataset(dataset_class, test_dataset, dataset_fraction, transformation=transformation)
+
+    return train_dataset, val_dataset, test_dataset
 
 
 def _get_dataset_class(dataset: str) -> Type:
@@ -53,47 +85,56 @@ def _get_dataset_class(dataset: str) -> Type:
     return dataset_classes[dataset]
 
 
-def _create_train_test_datasets(dataset_class: Type, dataset_dir: str, transformation: Optional[Callable],
-                                n_train: Optional[int], n_test: Optional[int]) \
-        -> Tuple[FineTuningDataset, FineTuningDataset]:
+def _split_dataset(dataset_class: Type,
+                   dataset: FineTuningDataset,
+                   test_size: float,
+                   transformation: Optional[Callable]) -> Tuple[FineTuningDataset, FineTuningDataset]:
     """
-    Create training and test datasets.
+    Split a dataset into two subsets using stratification by label.
+    `test_size` is a fraction of the dataset to become the second subset.
 
-    Args:
-        dataset_class (Type): The class of the dataset.
-        dataset_dir (str): Directory where the dataset is stored.
-        transformation (Optional[Callable]): Transformation function to apply to each sample.
-        n_train (Optional[int]): Number of training samples.
-        n_test (Optional[int]): Number of test samples.
-
-    Returns:
-        Tuple[FineTuningDataset, FineTuningDataset]: Training and test datasets.
+    Returns: (subset1, subset2)
     """
-    train_dataset = dataset_class(dataset_dir=dataset_dir, split='train', n_samples=n_train,
-                                  transformation=transformation)
-    try:
-        # Labels are hidden in SST2 test set
-        test_split = 'validation' if dataset_class == SST2Dataset else 'test'
-        test_dataset = dataset_class(dataset_dir=dataset_dir, split=test_split, n_samples=n_test,
-                                     transformation=transformation)
-    except KeyError:
-        test_size_ratio = _get_test_size_ratio(n_test, len(train_dataset))
-        split = train_dataset.hf_dataset.train_test_split(test_size=test_size_ratio)
-        train_dataset.hf_dataset = split['train']
-        test_dataset = dataset_class(hf_dataset=split['test'], transformation=transformation)
+    total_len = len(dataset)
+    actual_test_size = int(total_len * test_size)
+    if actual_test_size < 1:
+        actual_test_size = 1
 
-    return train_dataset, test_dataset
+    # Using the huggingface dataset's train_test_split with stratification
+    split = dataset.hf_dataset.train_test_split(
+        test_size=actual_test_size,
+        stratify_by_column=dataset.label_col
+    )
+
+    subset1 = dataset_class(hf_dataset=split['train'], transformation=transformation)
+    subset2 = dataset_class(hf_dataset=split['test'], transformation=transformation)
+    return subset1, subset2
 
 
-def _get_test_size_ratio(n_test: Optional[int], train_len: int) -> float:
+def _subset_dataset(dataset_class: Type,
+                    dataset: FineTuningDataset,
+                    dataset_size: float,
+                    transformation: Optional[Callable]) -> FineTuningDataset:
     """
-    Calculate the test size ratio.
-
-    Args:
-        n_test (Optional[int]): Number of test samples.
-        train_len (int): Length of the training dataset.
-
-    Returns:
-        float: The ratio of test samples to training samples.
+    Reduce the dataset to the given fraction of its original size in a stratified way.
+    If dataset_size >= 1.0, returns the dataset unchanged.
     """
-    return n_test / train_len if n_test is not None and isinstance(n_test, int) else 0.2
+    if dataset_size >= 1.0:
+        return dataset
+
+    total_len = len(dataset)
+    new_len = int(total_len * dataset_size)
+    if new_len < 1:
+        # Ensure we keep at least one sample
+        new_len = 1
+
+    # We want to keep `new_len` samples stratified by label.
+    # We'll do a train_test_split where test_size = total_len - new_len
+    # We'll keep 'train' portion as the reduced dataset.
+    split = dataset.hf_dataset.train_test_split(
+        test_size=(total_len - new_len),
+        stratify_by_column='label'
+    )
+
+    reduced = dataset_class(hf_dataset=split['train'], transformation=transformation)
+    return reduced
