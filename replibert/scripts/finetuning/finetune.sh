@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --partition=gpu-teaching-5h
+#SBATCH --partition=gpu-teaching-2h
 #SBATCH --gpus-per-node=4
 #SBATCH --nodes=1
 #SBATCH --nodelist=head025
