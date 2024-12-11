@@ -105,7 +105,8 @@ def _finetune_model(model: nn.Module, train_dataset: FineTuningDataset, val_data
         num_workers=get_available_cpus(), pin_memory=True
     )
 
-    optimizer = optim.Adam(model.parameters(), lr=float(config["learning_rate"]), weight_decay=config["weight_decay"])
+    optimizer = optim.Adam(model.parameters(), lr=float(config["learning_rate"]),
+                           weight_decay=float(config["weight_decay"]))
     scheduler = CosineAnnealingLR(optimizer, T_max=config["num_epochs"])
     criterion = nn.BCEWithLogitsLoss().to(config["device"])
     scaler = GradScaler()
@@ -204,4 +205,3 @@ def _process_batch(inputs: torch.Tensor, labels: torch.Tensor, config: dict):
     attention_mask = inputs[:, 1, :].to(config["device"], non_blocking=True)
     labels = labels.to(config["device"], non_blocking=True)
     return input_ids, attention_mask, labels
-
