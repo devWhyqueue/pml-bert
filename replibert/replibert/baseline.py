@@ -2,6 +2,7 @@ from typing import Tuple
 
 import numpy as np
 import torch
+import torch
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, roc_auc_score
@@ -10,6 +11,7 @@ from sklearn.svm import LinearSVC
 
 from configuration.config import get_logger
 from data.finetuning.datasets import FineTuningDataset
+from data.finetuning.transform import tf_idf_vectorize, preprocess, balance_dataset
 from data.finetuning.transform import tf_idf_vectorize, preprocess, balance_dataset
 
 log = get_logger(__name__)
@@ -25,8 +27,9 @@ def binary_classification(train_data: FineTuningDataset, val_data: FineTuningDat
         test_data (FineTuningDataset): The test dataset.
     """
     log.info("Performing grid search for binary classification...")
-    methods = [LogisticRegression(), CalibratedClassifierCV(LinearSVC()), MultinomialNB()]
+    methods = [LogisticRegression(), CalibratedClassifierCV(LinearSVC()), RandomForestClassifier(), MultinomialNB()]
     do_preprocessing = [True, False]
+    pos_proportions = [None, 0.1, 0.25, 0.5]
     pos_proportions = [None, 0.1, 0.25, 0.5]
     for method in methods:
         for do_prep in do_preprocessing:
@@ -60,11 +63,16 @@ def _prepare_data(train_data: FineTuningDataset, val_data: FineTuningDataset, te
     """
     if pos_proportion:
         train_data = balance_dataset(train_data, pos_proportion, in_place=True)
+        train_data = balance_dataset(train_data, pos_proportion, in_place=True)
         if do_prep:
             train_data.dataset.hf_dataset, val_data.hf_dataset, test_data.hf_dataset \
                 = preprocess([train_data.dataset.hf_dataset, val_data.hf_dataset,
                               test_data.hf_dataset], test_data.text_field)
+            train_data.dataset.hf_dataset, val_data.hf_dataset, test_data.hf_dataset \
+                = preprocess([train_data.dataset.hf_dataset, val_data.hf_dataset,
+                              test_data.hf_dataset], test_data.text_field)
         tf_idf_vectorize(train_data.dataset, val_data, test_data)
+        log.info("Processing examples from datasets...")
         log.info("Processing examples from datasets...")
         x_train, y_train = _to_numpy_arrays(train_data.dataset)
     else:
@@ -72,7 +80,11 @@ def _prepare_data(train_data: FineTuningDataset, val_data: FineTuningDataset, te
             train_data.hf_dataset, val_data.hf_dataset, test_data.hf_dataset \
                 = preprocess([train_data.hf_dataset, val_data.hf_dataset, test_data.hf_dataset],
                              test_data.text_field)
+            train_data.hf_dataset, val_data.hf_dataset, test_data.hf_dataset \
+                = preprocess([train_data.hf_dataset, val_data.hf_dataset, test_data.hf_dataset],
+                             test_data.text_field)
         tf_idf_vectorize(train_data, val_data, test_data)
+        log.info("Processing examples from datasets...")
         log.info("Processing examples from datasets...")
         x_train, y_train = _to_numpy_arrays(train_data)
 
@@ -92,6 +104,8 @@ def _to_numpy_arrays(dataset: FineTuningDataset) -> Tuple[np.ndarray, np.ndarray
     Returns:
         Tuple[np.ndarray, np.ndarray]: The feature and label arrays.
     """
+    x = dataset.get_input_vector().numpy()
+    y = torch.round(dataset.get_label_vector()).int().numpy()
     x = dataset.get_input_vector().numpy()
     y = torch.round(dataset.get_label_vector()).int().numpy()
     return x, y

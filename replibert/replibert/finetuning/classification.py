@@ -1,6 +1,9 @@
 import random
 from typing import Optional
+import random
+from typing import Optional
 
+import numpy as np
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -12,6 +15,7 @@ from tqdm import tqdm
 
 from configuration.config import settings, get_logger
 from data.finetuning.datasets import FineTuningDataset
+from data.finetuning.transform import balance_dataset
 from data.finetuning.transform import balance_dataset
 from finetuning.evaluate import evaluate_on_all_datasets
 from model.initialize import initialize_with_weights
@@ -85,14 +89,18 @@ def _finetune_model(model: nn.Module, train_dataset: FineTuningDataset, val_data
     train_loader = _get_train_data_loader(train_dataset, rank, world_size, config)
     optimizer = optim.AdamW(model.parameters(), lr=float(config["learning_rate"]),
                             weight_decay=float(config["weight_decay"]))
+    scheduler = CosineAnnealingLR(optimizer, T_max=config["num_epochs"])
     criterion = nn.BCEWithLogitsLoss().to(config["device"])
     scaler = GradScaler()
     for epoch in range(config["num_epochs"]):
+        log.info(f"Learning rate in epoch {epoch + 1} is {scheduler.get_last_lr()[0]:.8f}")
         train_loader.sampler.set_epoch(epoch)
         model.train()
         _finetune_one_epoch(config, criterion, model, optimizer, train_loader, scaler)
+        _finetune_one_epoch(config, criterion, model, optimizer, train_loader, scaler)
         log.info(f"Evaluating trained model after epoch {epoch + 1}")
         evaluate_on_all_datasets(model, train_dataset, val_dataset, test_dataset, config)
+        scheduler.step()
 
 
 def _get_train_data_loader(train_dataset: FineTuningDataset, rank: int, world_size: int, config: dict) -> DataLoader:
@@ -107,35 +115,35 @@ def _get_train_data_loader(train_dataset: FineTuningDataset, rank: int, world_si
     Returns:
         DataLoader: Training data loader.
     """
+    _set_seeds()
     generator = torch.Generator().manual_seed(42)
     train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, seed=42)
     train_loader = DataLoader(
-        train_dataset, batch_size=config["batch_size"], sampler=train_sampler, worker_init_fn=_set_seeds,
+        train_dataset, batch_size=config["batch_size"], sampler=train_sampler,
         num_workers=get_available_cpus(), pin_memory=True, generator=generator
     )
 
     return train_loader
 
 
-def _set_seeds(worker_id: int) -> None:
+def _set_seeds():
     """
-    Sets the random seeds for reproducibility in the worker process.
+    Sets the random seeds for reproducibility.
 
-    Args:
-        worker_id (int): The ID of the worker process.
+    This function sets the random seed for Python's `random` module, NumPy, and PyTorch (both CPU and CUDA).
     """
-    log.debug(f"Setting seeds for worker {worker_id}")
-    torch.use_deterministic_algorithms(True)
-    worker_seed = torch.initial_seed() % 2 ** 32
-    random.seed(worker_seed)
-    np.random.seed(worker_seed)
-    torch.manual_seed(worker_seed)
-    torch.cuda.manual_seed_all(worker_seed)
+    seed = 42
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
 def _finetune_one_epoch(config: dict, criterion: nn.Module, model: nn.Module, optimizer: optim.Optimizer,
                         train_loader: DataLoader, scaler: GradScaler) -> None:
+                        train_loader: DataLoader, scaler: GradScaler) -> None:
     """
+    Performs one epoch of fine-tuning with mixed precision.
     Performs one epoch of fine-tuning with mixed precision.
 
     Args:
@@ -149,6 +157,7 @@ def _finetune_one_epoch(config: dict, criterion: nn.Module, model: nn.Module, op
     optimizer.zero_grad()
 
     for inputs, labels in (
+    for inputs, labels in (
             tqdm(train_loader, desc="Fine-tuning", unit="batch", dynamic_ncols=True, disable=not is_main_process())
     ):
         input_ids, attention_mask, labels = _process_batch(inputs, labels, config)
@@ -156,8 +165,15 @@ def _finetune_one_epoch(config: dict, criterion: nn.Module, model: nn.Module, op
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
             logits = outputs.squeeze(-1)
             loss = criterion(logits, labels)
+        with autocast(config["device"]):
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+            logits = outputs.squeeze(-1)
+            loss = criterion(logits, labels)
 
         scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+        optimizer.zero_grad()
         scaler.step(optimizer)
         scaler.update()
         optimizer.zero_grad()
