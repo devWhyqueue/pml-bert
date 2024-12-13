@@ -133,6 +133,42 @@ def _set_seeds(worker_id: int) -> None:
     torch.cuda.manual_seed_all(worker_seed)
 
 
+def _get_train_data_loader(train_dataset: FineTuningDataset, rank: int, world_size: int, config: dict) -> DataLoader:
+    """
+    Initializes the training data loader.
+
+    Args:
+        train_dataset (FineTuningDataset): Training dataset.
+        rank (int): Process rank.
+        world_size (int): Total number of processes.
+        config (dict, optional): Configuration settings.
+    Returns:
+        DataLoader: Training data loader.
+    """
+    _set_seeds()
+    generator = torch.Generator().manual_seed(42)
+    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, seed=42)
+    train_loader = DataLoader(
+        train_dataset, batch_size=config["batch_size"], sampler=train_sampler,
+        num_workers=get_available_cpus(), pin_memory=True, generator=generator
+    )
+
+    return train_loader
+
+
+def _set_seeds():
+    """
+    Sets the random seeds for reproducibility.
+
+    This function sets the random seed for Python's `random` module, NumPy, and PyTorch (both CPU and CUDA).
+    """
+    seed = 42
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
 def _finetune_one_epoch(config: dict, criterion: nn.Module, model: nn.Module, optimizer: optim.Optimizer,
                         train_loader: DataLoader, scaler: GradScaler) -> None:
     """
