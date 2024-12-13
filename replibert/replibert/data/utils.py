@@ -153,8 +153,9 @@ def _class_encode_column(dataset: Dataset, label_col: str) -> Tuple[Dataset, str
 
         dataset = dataset.map(_binarize_labels, num_proc=get_available_cpus())
         label_col = "binary_label"
-
-    dataset = dataset.class_encode_column(label_col)
+    from datasets import ClassLabel
+    if not isinstance(dataset.features[label_col], ClassLabel):
+        dataset = dataset.class_encode_column(label_col)
 
     return dataset, label_col
 
