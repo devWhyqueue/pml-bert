@@ -130,9 +130,8 @@ def mlm(dataset_dir: str, destination: str, start_index: int, end_index: int):
 )
 @click.option("--dataset_dir", type=click.Path(exists=True), required=True,
               help="Directory containing the dataset to process.")
-@click.option("--n_train", type=int, help="Number of training samples.")
-@click.option("--n_test", type=int, help="Number of test samples.")
-def baseline(dataset_name: str, dataset_dir: str, n_train: int = None, n_test: int = None):
+@click.option("--dataset_fraction", type=float, default=1.0, help="Fraction of the dataset to use.")
+def baseline(dataset_name: str, dataset_dir: str, dataset_fraction: float = 1.0):
     """
     Run a baseline model based on the dataset name.
     Maps dataset name to a specific classification or regression task.
@@ -141,11 +140,11 @@ def baseline(dataset_name: str, dataset_dir: str, n_train: int = None, n_test: i
     from baseline import binary_classification
 
     log.info(f"Loading data for {dataset_name}...")
-    train_dataset, test_dataset = load_data(dataset_name, dataset_dir, n_train, n_test)
+    train_dataset, val_dataset, test_dataset = load_data(dataset_name, dataset_dir, dataset_fraction=dataset_fraction)
 
     if dataset_name in ['sst2', 'civil_comments']:
         log.info("Performing binary classification...")
-        binary_classification(train_dataset, test_dataset)
+        binary_classification(train_dataset, val_dataset, test_dataset)
     elif dataset_name == 'jigsaw_toxicity_pred':
         raise NotImplementedError("Jigsaw toxicity prediction is not yet implemented.")
     else:
@@ -194,18 +193,17 @@ def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
     from finetuning.classification import finetune as finetune_model
     from data.utils import load_data
 
-    train_dataset, test_dataset = load_data(
-        dataset=dataset_name,
-        dataset_dir=dataset_dir,
-        n_train=settings['finetuning']["n_train"],
-        n_test=settings['finetuning']["n_test"]
+    log.info(f"Preparing datasets for fine-tuning on {dataset_name}...")
+    train_dataset, val_dataset, test_dataset = load_data(
+        dataset=dataset_name, dataset_dir=dataset_dir, dataset_fraction=settings['finetuning']['dataset_fraction']
     )
 
     # Assumes tokenization
     train_dataset.input_field = ['input_ids', 'attention_mask']
+    val_dataset.input_field = ['input_ids', 'attention_mask']
     test_dataset.input_field = ['input_ids', 'attention_mask']
 
-    finetune_model(train_dataset, test_dataset, weights_dir)
+    finetune_model(train_dataset, val_dataset, test_dataset, weights_dir)
 
 
 @cli.command()
@@ -228,10 +226,7 @@ def evaluate(dataset_name: str, dataset_dir: str, weight_file: str):
     from data.utils import load_data
     from finetuning.evaluate import evaluate as evaluate_model
 
-    _, test_dataset = load_data(
-        dataset=dataset_name,
-        dataset_dir=dataset_dir,
-    )
+    _, _, test_dataset = load_data(dataset=dataset_name, dataset_dir=dataset_dir)
 
     # Assumes tokenization
     test_dataset.input_field = ['input_ids', 'attention_mask']

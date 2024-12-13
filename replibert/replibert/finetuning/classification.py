@@ -5,13 +5,13 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
 from torch import GradScaler, autocast
-from torch.optim.lr_scheduler import CosineAnnealingLR, LRScheduler
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
 from configuration.config import settings, get_logger
 from data.finetuning.datasets import FineTuningDataset
-from finetuning.evaluate import evaluate
+from finetuning.evaluate import evaluate_on_all_datasets
 from model.initialize import initialize_with_weights
 from model.model import Bert, BertToxic
 from utils import get_available_cpus, is_main_process, _initialize_distributed
@@ -19,13 +19,14 @@ from utils import get_available_cpus, is_main_process, _initialize_distributed
 log = get_logger(__name__)
 
 
-def finetune(train_dataset: FineTuningDataset, test_dataset: FineTuningDataset, weights_dir: Optional[str] = None,
-             config: dict = settings["finetuning"]) -> None:
+def finetune(train_dataset: FineTuningDataset, val_dataset: FineTuningDataset, test_dataset: FineTuningDataset,
+             weights_dir: Optional[str] = None, config: dict = settings["finetuning"]) -> None:
     """
-    Fine-tunes a BERT model on the specified training dataset and evaluates it on the testing dataset.
+    Fine-tunes a BERT model on the training dataset and evaluates it on the validation and testing datasets.
 
     Args:
         train_dataset (FineTuningDataset): Training dataset.
+        val_dataset (FineTuningDataset): Validation dataset.
         test_dataset (FineTuningDataset): Testing dataset.
         weights_dir (Optional[str]): Directory to save the model weights.
         config (dict): Configuration settings.
@@ -33,12 +34,9 @@ def finetune(train_dataset: FineTuningDataset, test_dataset: FineTuningDataset, 
     rank, world_size = _initialize_distributed()
     log.info(f"Finetuning on {world_size} devices...")
 
-    log.info("Preparing data loaders...")
-    train_loader = _get_data_loader(train_dataset, rank, world_size, config)
     model = _initialize_model(config["device"])
     model = torch.nn.parallel.DistributedDataParallel(model)
-    optimizer, scheduler, criterion, scaler = _initialize_training_components(model, config)
-    _finetune_model(model, train_loader, optimizer, scheduler, criterion, scaler, test_dataset, config)
+    _finetune_model(model, train_dataset, val_dataset, test_dataset, rank, world_size, config)
 
     dist.barrier()
     if weights_dir and rank == 0:
@@ -87,39 +85,31 @@ def _initialize_model(device: str) -> BertToxic:
     return model
 
 
-def _initialize_training_components(model: nn.Module, config: dict) \
-        -> Tuple[optim.Optimizer, LRScheduler, nn.Module, GradScaler]:
-    """
-    Initializes the optimizer, criterion, and gradient scaler.
-
-    Args:
-        model (nn.Module): The model to be trained.
-        config (dict): Configuration settings.
-
-    Returns:
-        tuple: Optimizer, scheduler, criterion, and gradient scaler.
-    """
-    optimizer = optim.Adam(model.parameters(), lr=float(config["learning_rate"]), weight_decay=config["weight_decay"])
-    scheduler = CosineAnnealingLR(optimizer, T_max=config["num_epochs"])
-    criterion = nn.BCEWithLogitsLoss().to(config["device"])
-    scaler = GradScaler()
-    return optimizer, scheduler, criterion, scaler
-
-
-def _finetune_model(model: nn.Module, train_loader: DataLoader, optimizer: optim.Optimizer, scheduler: LRScheduler,
-                    criterion: nn.Module, scaler: GradScaler, test_dataset: FineTuningDataset, config: dict) -> None:
+def _finetune_model(model: nn.Module, train_dataset: FineTuningDataset, val_dataset: FineTuningDataset,
+                    test_dataset: FineTuningDataset, rank: int, world_size: int, config: dict) -> None:
     """
     Fine-tunes the model on the training data.
 
     Args:
         model (nn.Module): The model to be fine-tuned.
-        train_loader (DataLoader): The training data loader.
-        optimizer (optim.Optimizer): The optimizer.
-        scheduler (LRScheduler): The learning rate scheduler.
-        criterion (nn.Module): The loss function.
-        scaler (GradScaler): The gradient scaler.
+        train_dataset (FineTuningDataset): The training dataset.
+        val_dataset (FineTuningDataset): The validation dataset.
+        test_dataset (FineTuningDataset): The testing dataset.
+        rank (int): The process rank.
+        world_size (int): The total number of processes.
         config (dict): Configuration settings.
     """
+    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
+    train_loader = DataLoader(
+        train_dataset, batch_size=config["batch_size"], sampler=train_sampler,
+        num_workers=get_available_cpus(), pin_memory=True
+    )
+
+    optimizer = optim.Adam(model.parameters(), lr=float(config["learning_rate"]),
+                           weight_decay=float(config["weight_decay"]))
+    scheduler = CosineAnnealingLR(optimizer, T_max=config["num_epochs"])
+    criterion = nn.BCEWithLogitsLoss().to(config["device"])
+    scaler = GradScaler()
     for epoch in range(config["num_epochs"]):
         log.info(f"Learning rate in epoch {epoch + 1} is {scheduler.get_last_lr()[0]:.6f}")
         train_loader.sampler.set_epoch(epoch)
@@ -128,7 +118,7 @@ def _finetune_model(model: nn.Module, train_loader: DataLoader, optimizer: optim
         avg_loss = total_loss / total_samples
         log.info(f"Evaluating trained model after epoch {epoch + 1}")
         log.info(f'Epoch {epoch + 1}/{config["num_epochs"]} - Loss: {avg_loss:.4f}')
-        evaluate(test_dataset, model.module.state_dict(), config)
+        evaluate_on_all_datasets(model, train_dataset, val_dataset, test_dataset, config)
         scheduler.step()
 
 

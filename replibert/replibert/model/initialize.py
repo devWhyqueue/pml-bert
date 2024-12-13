@@ -11,7 +11,10 @@ def initialize_with_weights(model: Bert) -> None:
     hf_model = BertModel.from_pretrained("bert-base-uncased")
 
     # Copy embedding weights and biases
-    model.embeddings.load_state_dict(hf_model.embeddings.state_dict())
+    state_dict = hf_model.embeddings.state_dict()
+    truncated_pos_embeddings = state_dict['position_embeddings.weight'][:model.config['max_position_embeddings'], :]
+    state_dict['position_embeddings.weight'] = truncated_pos_embeddings
+    model.embeddings.load_state_dict(state_dict)
 
     # Copy encoder layers
     for layer, hf_layer in zip(model.encoder, hf_model.encoder.layer):

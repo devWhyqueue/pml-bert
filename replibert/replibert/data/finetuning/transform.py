@@ -69,7 +69,7 @@ def bert_tokenize(dataset: Dataset, text_field: str) -> Dataset:
         texts = batch[text_field]
         tokenized = tokenizer(
             texts,
-            max_length=512,
+            max_length=256,
             padding="max_length",
             truncation=True,
             return_tensors="pt"
