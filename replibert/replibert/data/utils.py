@@ -42,7 +42,7 @@ def load_data(
 
         # Create val split from train
         train_dataset, val_dataset = _split_dataset(
-            dataset_class, train_dataset, test_size=0.1, transformation=transformation
+            dataset_class, train_dataset, test_size=0.2, transformation=transformation
         )
 
     elif dataset == 'sst2':
@@ -52,7 +52,7 @@ def load_data(
 
         # Discard official test, create our own test from train
         train_dataset, test_dataset = _split_dataset(
-            dataset_class, train_dataset, test_size=0.1, transformation=transformation
+            dataset_class, train_dataset, test_size=0.2, transformation=transformation
         )
     else:
         raise ValueError(f"Unknown dataset: {dataset}")
