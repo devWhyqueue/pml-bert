@@ -75,6 +75,15 @@ class FineTuningDataset(torch.utils.data.Dataset, ABC):
         """
         return np.array(self.hf_dataset[self.text_field])
 
+    def get_input_vector(self) -> torch.tensor:
+        """
+        Abstract method to retrieve the input vector (samples, features) for the dataset.
+
+        Returns:
+            torch.tensor: The input vector for the dataset.
+        """
+        return torch.tensor(self.hf_dataset[self.input_field], dtype=torch.float32)
+
     @abstractmethod
     def get_label(self, item: dict) -> torch.tensor:
         """

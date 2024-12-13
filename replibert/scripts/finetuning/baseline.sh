@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#SBATCH --partition=cpu-5h
-#SBATCH --cpus-per-task=32
-#SBATCH --mem-per-cpu=8G
+#SBATCH --partition=cpu-7d
+#SBATCH --cpus-per-task=2
+#SBATCH --mem-per-cpu=256G
 
 # Check if the script is being executed or submitted
 if [ -z "$SLURM_JOB_ID" ]; then

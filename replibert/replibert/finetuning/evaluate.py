@@ -48,9 +48,10 @@ def evaluate(dataset: FineTuningDataset, weights: str | dict, config: dict = set
     rank, world_size = _initialize_distributed()
 
     test_sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False)
+    generator = torch.Generator().manual_seed(42)
     test_loader = DataLoader(
         dataset, batch_size=config["batch_size"], sampler=test_sampler,
-        num_workers=get_available_cpus(), pin_memory=True
+        num_workers=get_available_cpus(), pin_memory=True, generator=generator
     )
 
     model = BertToxic(Bert(), num_labels=1)

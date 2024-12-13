@@ -1,5 +1,7 @@
-from typing import Optional, Tuple
+import random
+from typing import Optional
 
+import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -11,6 +13,7 @@ from tqdm import tqdm
 
 from configuration.config import settings, get_logger
 from data.finetuning.datasets import FineTuningDataset
+from data.finetuning.transform import balance_dataset
 from finetuning.evaluate import evaluate_on_all_datasets
 from model.initialize import initialize_with_weights
 from model.model import Bert, BertToxic
@@ -46,28 +49,6 @@ def finetune(train_dataset: FineTuningDataset, val_dataset: FineTuningDataset, t
     dist.destroy_process_group()
 
 
-def _get_data_loader(train_dataset: FineTuningDataset, rank: int, world_size: int, config: dict) -> DataLoader:
-    """
-    Initializes the training data loader.
-
-    Args:
-        train_dataset (FineTuningDataset): Training dataset.
-        rank (int): Process rank.
-        world_size (int): Total number of processes.
-        config (dict, optional): Configuration settings.
-
-    Returns:
-        DataLoader: Training data loader.
-    """
-    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
-    train_loader = DataLoader(
-        train_dataset, batch_size=config["batch_size"], sampler=train_sampler,
-        num_workers=get_available_cpus(), pin_memory=True
-    )
-
-    return train_loader
-
-
 def _initialize_model(device: str) -> BertToxic:
     """
     Initializes the BERT model with pre-trained weights for binary classification.
@@ -99,33 +80,65 @@ def _finetune_model(model: nn.Module, train_dataset: FineTuningDataset, val_data
         world_size (int): The total number of processes.
         config (dict): Configuration settings.
     """
-    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
-    train_loader = DataLoader(
-        train_dataset, batch_size=config["batch_size"], sampler=train_sampler,
-        num_workers=get_available_cpus(), pin_memory=True
-    )
+    if config["pos_proportion"]:
+        train_dataset = balance_dataset(train_dataset, config["pos_proportion"])
 
-    optimizer = optim.Adam(model.parameters(), lr=float(config["learning_rate"]),
-                           weight_decay=float(config["weight_decay"]))
+    train_loader = _get_train_data_loader(train_dataset, rank, world_size, config)
+    optimizer = optim.AdamW(model.parameters(), lr=float(config["learning_rate"]),
+                            weight_decay=float(config["weight_decay"]))
     scheduler = CosineAnnealingLR(optimizer, T_max=config["num_epochs"])
     criterion = nn.BCEWithLogitsLoss().to(config["device"])
     scaler = GradScaler()
     for epoch in range(config["num_epochs"]):
-        log.info(f"Learning rate in epoch {epoch + 1} is {scheduler.get_last_lr()[0]:.6f}")
+        log.info(f"Learning rate in epoch {epoch + 1} is {scheduler.get_last_lr()[0]:.8f}")
         train_loader.sampler.set_epoch(epoch)
         model.train()
-        total_loss, total_samples = _finetune_one_epoch(config, criterion, model, optimizer, train_loader, scaler)
-        avg_loss = total_loss / total_samples
+        _finetune_one_epoch(config, criterion, model, optimizer, train_loader, scaler)
         log.info(f"Evaluating trained model after epoch {epoch + 1}")
-        log.info(f'Epoch {epoch + 1}/{config["num_epochs"]} - Loss: {avg_loss:.4f}')
         evaluate_on_all_datasets(model, train_dataset, val_dataset, test_dataset, config)
         scheduler.step()
 
 
-def _finetune_one_epoch(config: dict, criterion: nn.Module, model: nn.Module, optimizer: optim.Optimizer,
-                        train_loader: DataLoader, scaler: GradScaler) -> Tuple[float, int]:
+def _get_train_data_loader(train_dataset: FineTuningDataset, rank: int, world_size: int, config: dict) -> DataLoader:
     """
-    Performs one epoch of fine-tuning with mixed precision and gradient accumulation.
+    Initializes the training data loader.
+
+    Args:
+        train_dataset (FineTuningDataset): Training dataset.
+        rank (int): Process rank.
+        world_size (int): Total number of processes.
+        config (dict, optional): Configuration settings.
+    Returns:
+        DataLoader: Training data loader.
+    """
+    _set_seeds()
+    generator = torch.Generator().manual_seed(42)
+    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, seed=42)
+    train_loader = DataLoader(
+        train_dataset, batch_size=config["batch_size"], sampler=train_sampler,
+        num_workers=get_available_cpus(), pin_memory=True, generator=generator
+    )
+
+    return train_loader
+
+
+def _set_seeds():
+    """
+    Sets the random seeds for reproducibility.
+
+    This function sets the random seed for Python's `random` module, NumPy, and PyTorch (both CPU and CUDA).
+    """
+    seed = 42
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+def _finetune_one_epoch(config: dict, criterion: nn.Module, model: nn.Module, optimizer: optim.Optimizer,
+                        train_loader: DataLoader, scaler: GradScaler) -> None:
+    """
+    Performs one epoch of fine-tuning with mixed precision.
 
     Args:
         config (dict): Configuration settings.
@@ -134,59 +147,22 @@ def _finetune_one_epoch(config: dict, criterion: nn.Module, model: nn.Module, op
         optimizer (optim.Optimizer): Optimizer.
         train_loader (DataLoader): Training data loader.
         scaler (GradScaler): Gradient scaler for mixed precision.
-
-    Returns:
-        tuple: Total loss and total samples processed.
     """
-    total_loss, total_samples = 0.0, 0
-    actual_batch_size = 16  # Assumed max batch size fitting into memory
-    accumulation_steps = config["batch_size"] // actual_batch_size
     optimizer.zero_grad()
 
-    for batch_idx, (inputs, labels) in enumerate(
+    for inputs, labels in (
             tqdm(train_loader, desc="Fine-tuning", unit="batch", dynamic_ncols=True, disable=not is_main_process())
     ):
         input_ids, attention_mask, labels = _process_batch(inputs, labels, config)
-        loss = _process_batch_with_autocast(model, criterion, config, input_ids,
-                                            attention_mask, labels, accumulation_steps)
+        with autocast(config["device"]):
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+            logits = outputs.squeeze(-1)
+            loss = criterion(logits, labels)
 
         scaler.scale(loss).backward()
-
-        if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == len(train_loader):
-            scaler.step(optimizer)
-            scaler.update()
-            optimizer.zero_grad()
-
-        batch_size = input_ids.size(0)
-        total_loss += loss.item() * batch_size * accumulation_steps  # Reverse normalization
-        total_samples += batch_size
-
-    return total_loss, total_samples
-
-
-def _process_batch_with_autocast(model: nn.Module, criterion: nn.Module, config: dict,
-                                 input_ids: torch.Tensor, attention_mask: torch.Tensor, labels: torch.Tensor,
-                                 accumulation_steps: int) -> torch.Tensor:
-    """
-    Process a single batch with mixed precision, computing the loss.
-
-    Args:
-        model (nn.Module): The BERT model.
-        criterion (nn.Module): Loss function.
-        config (dict): Configuration settings.
-        input_ids (torch.Tensor): Input IDs tensor.
-        attention_mask (torch.Tensor): Attention mask tensor.
-        labels (torch.Tensor): Target labels tensor.
-        accumulation_steps (int): Number of accumulation steps.
-
-    Returns:
-        torch.Tensor: Scaled and normalized loss.
-    """
-    with autocast(config["device"]):
-        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-        logits = outputs.squeeze(-1)
-        loss = criterion(logits, labels)
-        return loss / accumulation_steps
+        scaler.step(optimizer)
+        scaler.update()
+        optimizer.zero_grad()
 
 
 def _process_batch(inputs: torch.Tensor, labels: torch.Tensor, config: dict):
