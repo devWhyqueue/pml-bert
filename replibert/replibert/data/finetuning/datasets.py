@@ -133,7 +133,7 @@ class JigsawToxicityDataset(FineTuningDataset):
             item["threat"],
             item["insult"],
             item["identity_hate"]
-        ], dtype=torch.int8)).to(torch.int8)
+        ], dtype=torch.int8)).to(torch.float32)
         return yi
 
     def get_label_vector(self) -> torch.tensor:
@@ -144,7 +144,7 @@ class JigsawToxicityDataset(FineTuningDataset):
             self.hf_dataset["threat"],
             self.hf_dataset["insult"],
             self.hf_dataset["identity_hate"]
-        ], dtype=torch.int8), dim=0).to(torch.int8)
+        ], dtype=torch.int8), dim=0).to(torch.float32)
         return y.T
 
 
