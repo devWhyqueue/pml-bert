@@ -1,19 +1,16 @@
-from copy import deepcopy
 from typing import Tuple
 
 import numpy as np
+import torch
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, roc_auc_score
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
-from sklearn.utils import resample
-from torch.utils.data import Subset
 
 from configuration.config import get_logger
 from data.finetuning.datasets import FineTuningDataset
-from data.finetuning.transform import tf_idf_vectorize, preprocess
+from data.finetuning.transform import tf_idf_vectorize, preprocess, balance_dataset
 
 log = get_logger(__name__)
 
@@ -28,9 +25,9 @@ def binary_classification(train_data: FineTuningDataset, val_data: FineTuningDat
         test_data (FineTuningDataset): The test dataset.
     """
     log.info("Performing grid search for binary classification...")
-    methods = [CalibratedClassifierCV(LinearSVC()), LogisticRegression(), RandomForestClassifier(), MultinomialNB()]
+    methods = [LogisticRegression(), CalibratedClassifierCV(LinearSVC()), MultinomialNB()]
     do_preprocessing = [True, False]
-    pos_proportions = [0.1, 0.25, 0.5]
+    pos_proportions = [None, 0.1, 0.25, 0.5]
     for method in methods:
         for do_prep in do_preprocessing:
             for pos_proportion in pos_proportions:
@@ -62,17 +59,21 @@ def _prepare_data(train_data: FineTuningDataset, val_data: FineTuningDataset, te
         Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: The prepared data arrays.
     """
     if pos_proportion:
-        train_data = _balance_dataset(train_data, pos_proportion)
+        train_data = balance_dataset(train_data, pos_proportion, in_place=True)
         if do_prep:
-            preprocess([train_data.dataset, test_data, val_data])
+            train_data.dataset.hf_dataset, val_data.hf_dataset, test_data.hf_dataset \
+                = preprocess([train_data.dataset.hf_dataset, val_data.hf_dataset,
+                              test_data.hf_dataset], test_data.text_field)
         tf_idf_vectorize(train_data.dataset, val_data, test_data)
-        log.info("Loading examples from datasets...")
+        log.info("Processing examples from datasets...")
         x_train, y_train = _to_numpy_arrays(train_data.dataset)
     else:
         if do_prep:
-            preprocess([train_data, test_data, val_data])
+            train_data.hf_dataset, val_data.hf_dataset, test_data.hf_dataset \
+                = preprocess([train_data.hf_dataset, val_data.hf_dataset, test_data.hf_dataset],
+                             test_data.text_field)
         tf_idf_vectorize(train_data, val_data, test_data)
-        log.info("Loading examples from datasets...")
+        log.info("Processing examples from datasets...")
         x_train, y_train = _to_numpy_arrays(train_data)
 
     x_val, y_val = _to_numpy_arrays(val_data)
@@ -91,44 +92,9 @@ def _to_numpy_arrays(dataset: FineTuningDataset) -> Tuple[np.ndarray, np.ndarray
     Returns:
         Tuple[np.ndarray, np.ndarray]: The feature and label arrays.
     """
-    x, y = zip(*[(xi.numpy(), yi.item()) for xi, yi in dataset])
-    x = np.array(x)
-    y = np.rint(np.array(y)).astype(int)
-
+    x = dataset.get_input_vector().numpy()
+    y = torch.round(dataset.get_label_vector()).int().numpy()
     return x, y
-
-
-def _balance_dataset(dataset: FineTuningDataset, pos_proportion: float = 0.5) -> Subset:
-    """
-    Balance the dataset to have a specified proportion of positive samples.
-
-    Args:
-        dataset (FineTuningDataset): The dataset to balance.
-        pos_proportion (float): The desired proportion of positive samples.
-
-    Returns:
-        Subset: The balanced dataset subset.
-    """
-    targets = dataset.get_label_vector()
-
-    # Extract positive and negative indices for the current label
-    positive_indices = (targets == 1).nonzero(as_tuple=True)[0]
-    negative_indices = (targets == 0).nonzero(as_tuple=True)[0]
-    log.info(f"The initial proportion of positive samples is {len(positive_indices) / len(targets)}.")
-
-    # Balance positive and negative samples
-    pos_count = len(positive_indices)
-    neg_count = int((1 / pos_proportion - 1) * pos_count)
-    balanced_negative_indices = resample(negative_indices.tolist(), n_samples=neg_count, random_state=42)
-
-    # Combine indices and create a balanced subset
-    balanced_indices = positive_indices.tolist() + balanced_negative_indices
-    balanced_subset = Subset(deepcopy(dataset), balanced_indices)
-    balanced_subset.dataset.hf_dataset = balanced_subset.dataset.hf_dataset.select(balanced_indices)
-    log.info(
-        f"The balanced proportion of positive samples is {len(positive_indices) / len(balanced_indices)}.")
-
-    return balanced_subset
 
 
 def _evaluate_model(model: CalibratedClassifierCV, x_train: np.ndarray, y_train: np.ndarray,

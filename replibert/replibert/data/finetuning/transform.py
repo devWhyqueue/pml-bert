@@ -1,4 +1,5 @@
 import re
+from copy import deepcopy
 
 import nltk
 import torch
@@ -6,6 +7,8 @@ from datasets import Dataset
 from nltk import WordNetLemmatizer, word_tokenize
 from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.utils import resample
+from torch.utils.data import Subset
 from transformers import BertTokenizer
 
 from configuration.config import get_logger
@@ -44,12 +47,14 @@ def tf_idf_vectorize(train_dataset: FineTuningDataset, val_dataset: FineTuningDa
         return {'tf_idf': torch.tensor(vectorized, dtype=torch.float32)}
 
     train_dataset.hf_dataset \
-        = train_dataset.hf_dataset.map(_transform_batch, batched=True, batch_size=512, desc="Vectorizing train dataset")
+        = train_dataset.hf_dataset.map(_transform_batch, batched=True, batch_size=512,
+                                       num_proc=get_available_cpus(), desc="Vectorizing train dataset")
     val_dataset.hf_dataset \
-        = val_dataset.hf_dataset.map(_transform_batch, batched=True, batch_size=512,
+        = val_dataset.hf_dataset.map(_transform_batch, batched=True, batch_size=512, num_proc=get_available_cpus(),
                                      desc="Vectorizing validation dataset")
     test_dataset.hf_dataset \
-        = test_dataset.hf_dataset.map(_transform_batch, batched=True, batch_size=512, desc="Vectorizing test dataset")
+        = test_dataset.hf_dataset.map(_transform_batch, batched=True, batch_size=512,
+                                      num_proc=get_available_cpus(), desc="Vectorizing test dataset")
 
 
 def bert_tokenize(dataset: Dataset, text_field: str) -> Dataset:
@@ -90,46 +95,51 @@ def bert_tokenize(dataset: Dataset, text_field: str) -> Dataset:
     return dataset
 
 
-def preprocess(datasets: list[FineTuningDataset]):
+def preprocess(datasets: list[Dataset], text_field: str) -> list[Dataset]:
     """
     Preprocesses the text data in the given datasets using NLTK.
 
     Args:
-        datasets (list[FineTuningDataset]): A list of datasets to preprocess.
+        datasets (list[Dataset]): The datasets to preprocess.
+        text_field (str): The field containing the text data.
 
     Returns:
-        None
+        list[Dataset]: The preprocessed datasets.
     """
     lemmatizer = WordNetLemmatizer()
     stop_words = set(stopwords.words('english'))
 
+    transformed = []
     for dataset in datasets:
-        _preprocess_dataset(dataset, dataset.text_field, lemmatizer, stop_words, "Preprocessing dataset")
+        ds = _preprocess_dataset(dataset, text_field, lemmatizer, stop_words)
+        transformed.append(ds)
+
+    return transformed
 
 
-def _preprocess_dataset(dataset, text_field, lemmatizer, stop_words, description):
+def _preprocess_dataset(dataset: Dataset, text_field: str, lemmatizer: WordNetLemmatizer, stop_words: set) -> Dataset:
     """
     Preprocesses the text data in a single dataset.
 
     Args:
-        dataset (FineTuningDataset): The dataset to preprocess.
+        dataset (Dataset): The dataset to preprocess.
         text_field (str): The field containing the text data.
         lemmatizer (WordNetLemmatizer): The lemmatizer to use.
         stop_words (set): The set of stopwords to remove.
-        description (str): A description for the preprocessing task.
 
     Returns:
-        None
+        Dataset: The preprocessed dataset.
     """
 
     def _preprocess_batch(batch):
         batch[text_field] = [_preprocess_text(text, lemmatizer, stop_words) for text in batch[text_field]]
         return batch
 
-    dataset.hf_dataset = dataset.hf_dataset.map(_preprocess_batch, batched=True, batch_size=512, desc=description)
+    return dataset.map(_preprocess_batch, batched=True, batch_size=512, num_proc=get_available_cpus(),
+                       desc="Preprocessing dataset")
 
 
-def _preprocess_text(text, lemmatizer, stop_words):
+def _preprocess_text(text: str, lemmatizer: WordNetLemmatizer, stop_words: set) -> str:
     """
     Preprocesses a single text string.
 
@@ -151,3 +161,40 @@ def _preprocess_text(text, lemmatizer, stop_words):
     tokens = [word for word in tokens if word not in stop_words]  # Remove stopwords
     tokens = [lemmatizer.lemmatize(word) for word in tokens]  # Lemmatize tokens
     return ' '.join(tokens)
+
+
+def balance_dataset(dataset: FineTuningDataset, pos_proportion: float = 0.5, in_place: bool = False) -> Subset:
+    """
+    Balance the dataset to have a specified proportion of positive samples.
+
+    Args:
+        dataset (FineTuningDataset): The dataset to balance.
+        pos_proportion (float): The desired proportion of positive samples.
+        in_place (bool): Whether to balance the dataset in place.
+
+    Returns:
+        Subset: The balanced dataset subset.
+    """
+    targets = dataset.get_label_vector()
+    targets = targets.round().int()
+
+    # Extract positive and negative indices for the current label
+    positive_indices = (targets == 1).nonzero(as_tuple=True)[0]
+    negative_indices = (targets == 0).nonzero(as_tuple=True)[0]
+    log.info(f"The initial proportion of positive samples is {len(positive_indices) / len(targets)}.")
+
+    # Balance positive and negative samples
+    pos_count = len(positive_indices)
+    neg_count = int((1 / pos_proportion - 1) * pos_count)
+    balanced_negative_indices = resample(negative_indices.tolist(), n_samples=neg_count, random_state=42)
+
+    # Combine indices and create a balanced subset
+    balanced_indices = positive_indices.tolist() + balanced_negative_indices
+    balanced_subset = Subset(deepcopy(dataset), balanced_indices)
+    if in_place:
+        balanced_subset.dataset.hf_dataset = balanced_subset.dataset.hf_dataset.select(balanced_indices)
+
+    log.info(
+        f"The balanced proportion of positive samples is {len(positive_indices) / len(balanced_indices)}.")
+
+    return balanced_subset

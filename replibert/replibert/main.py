@@ -155,8 +155,9 @@ def baseline(dataset_name: str, dataset_dir: str, dataset_fraction: float = 1.0)
 @click.option("--dataset_dir", type=click.Path(exists=True), required=True,
               help="Directory containing the dataset to process.")
 @click.option("--text_field", type=str, required=True, help="Name of the field containing the text data.")
+@click.option("--preprocess", is_flag=True, help="Flag to indicate whether to preprocess the text data.")
 @click.option("--destination", type=click.Path(), help="Directory where the tokenized dataset will be saved.")
-def tokenize(dataset_dir: str, text_field: str, destination: str):
+def tokenize(dataset_dir: str, text_field: str, preprocess: bool, destination: str):
     """
     Tokenizes the specified dataset and saves it to the destination directory.
 
@@ -169,11 +170,15 @@ def tokenize(dataset_dir: str, text_field: str, destination: str):
     """
     from datasets import load_from_disk
     from data.finetuning.transform import bert_tokenize
+    from data.finetuning.transform import preprocess as preprocess_datasets
 
     dataset = load_from_disk(dataset_dir)
+
+    if preprocess:
+        dataset = preprocess_datasets([dataset], text_field)[0]
+
     dataset = bert_tokenize(dataset, text_field)
     dataset.save_to_disk(destination)
-
 
 @cli.command()
 @click.option("--dataset_name", type=click.Choice(['civil_comments', 'jigsaw_toxicity_pred', 'sst2']), required=True,
@@ -193,7 +198,6 @@ def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
     from finetuning.classification import finetune as finetune_model
     from data.utils import load_data
 
-    log.info(f"Preparing datasets for fine-tuning on {dataset_name}...")
     train_dataset, val_dataset, test_dataset = load_data(
         dataset=dataset_name, dataset_dir=dataset_dir, dataset_fraction=settings['finetuning']['dataset_fraction']
     )
