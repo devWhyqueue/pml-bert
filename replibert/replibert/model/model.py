@@ -150,7 +150,7 @@ class BertToxic(nn.Module):
         Returns:
             torch.Tensor: Tensor of classification logits.
         """
-        hidden_states = self.bert(input_ids, token_type_ids, attention_mask)
+        hidden_states = self.bert(input_ids, attention_mask)
         cls_token_state = hidden_states[:, 0, :]
         cls_token_state = self.dropout(cls_token_state)
         logits = self.classifier(cls_token_state)
