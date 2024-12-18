@@ -115,7 +115,7 @@ class CivilCommentsDataset(FineTuningDataset):
 
     def get_label(self, item: dict) -> torch.tensor:
         label = torch.tensor(item["toxicity"], dtype=torch.float32)
-        return label.round().int()
+        return label.round()
 
     def get_label_vector(self) -> torch.tensor:
         return torch.tensor(self.hf_dataset["toxicity"], dtype=torch.float32)
