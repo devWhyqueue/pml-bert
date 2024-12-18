@@ -9,7 +9,7 @@ from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.utils import resample
 from torch.utils.data import Subset
-from transformers import BertTokenizer
+from transformers import RobertaTokenizer
 
 from configuration.config import get_logger, settings
 from data.finetuning.datasets import FineTuningDataset
@@ -69,7 +69,7 @@ def bert_tokenize(dataset: Dataset, text_field: str, config: dict = settings["mo
     Returns:
         Dataset: The tokenized dataset.
     """
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", use_fast=True)
+    tokenizer = RobertaTokenizer.from_pretrained("roberta-base", use_fast=True)
 
     def _tokenize_batch(batch):
         texts = batch[text_field]

@@ -8,7 +8,7 @@ def initialize_with_weights(model: Bert) -> None:
     """
     Initialize a custom model with weights from a pre-trained Hugging Face BERT model.
     """
-    hf_model = BertModel.from_pretrained("bert-base-uncased")
+    hf_model = BertModel.from_pretrained("roberta-base")
 
     # Copy embedding weights and biases
     state_dict = hf_model.embeddings.state_dict()
