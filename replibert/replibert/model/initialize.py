@@ -1,4 +1,4 @@
-from transformers import BertModel
+from transformers import RobertaModel
 from transformers.models.bert import BertLayer
 
 from model.model import Roberta
@@ -8,7 +8,7 @@ def initialize_with_weights(model: Roberta) -> None:
     """
     Initialize a custom model with weights from a pre-trained Hugging Face BERT model.
     """
-    hf_model = BertModel.from_pretrained("roberta-base")
+    hf_model = RobertaModel.from_pretrained("roberta-base")
 
     # Copy embedding weights and biases
     state_dict = hf_model.embeddings.state_dict()
