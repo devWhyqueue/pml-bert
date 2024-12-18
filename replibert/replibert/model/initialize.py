@@ -1,10 +1,10 @@
 from transformers import BertModel
 from transformers.models.bert import BertLayer
 
-from model.model import Bert
+from model.model import Roberta
 
 
-def initialize_with_weights(model: Bert) -> None:
+def initialize_with_weights(model: Roberta) -> None:
     """
     Initialize a custom model with weights from a pre-trained Hugging Face BERT model.
     """

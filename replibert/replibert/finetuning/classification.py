@@ -15,7 +15,7 @@ from data.finetuning.datasets import FineTuningDataset
 from data.finetuning.transform import balance_dataset
 from finetuning.evaluate import evaluate_on_all_datasets
 from model.initialize import initialize_with_weights
-from model.model import RobertaToxic, Roberta
+from model.model import BertToxic, Roberta
 from utils import get_available_cpus, is_main_process, _initialize_distributed
 
 log = get_logger(__name__)
@@ -48,7 +48,7 @@ def finetune(train_dataset: FineTuningDataset, val_dataset: FineTuningDataset, t
     dist.destroy_process_group()
 
 
-def _initialize_model(device: str) -> RobertaToxic:
+def _initialize_model(device: str) -> BertToxic:
     """
     Initializes the BERT model with pre-trained weights for binary classification.
 
@@ -56,11 +56,11 @@ def _initialize_model(device: str) -> RobertaToxic:
         device (str): The device to perform computation on.
 
     Returns:
-        RobertaToxic: The initialized BERT model.
+        BertToxic: The initialized BERT model.
     """
     model = Roberta()
     initialize_with_weights(model)
-    model = RobertaToxic(model, num_labels=1)
+    model = BertToxic(model, num_labels=1)
     model.to(device)
     return model
 

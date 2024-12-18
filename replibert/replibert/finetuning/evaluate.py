@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from configuration.config import get_logger, settings
 from data.finetuning.datasets import FineTuningDataset
-from model.model import RobertaToxic, Roberta
+from model.model import BertToxic, Roberta
 from utils import is_main_process, _initialize_distributed, get_available_cpus
 
 log = get_logger(__name__)
@@ -54,7 +54,7 @@ def evaluate(dataset: FineTuningDataset, weights: str | dict, config: dict = set
         num_workers=get_available_cpus(), pin_memory=True, generator=generator
     )
 
-    model = RobertaToxic(Roberta(), num_labels=1)
+    model = BertToxic(Roberta(), num_labels=1)
     state_dict = torch.load(weights, weights_only=True) if isinstance(weights, str) else weights
     model.load_state_dict(state_dict)
     model.to(config["device"])

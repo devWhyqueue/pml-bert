@@ -40,7 +40,7 @@ class RobertaEmbeddings(nn.Module):
         return embeddings
 
 
-class RobertaLayer(nn.Module):
+class BertLayer(nn.Module):
     """
     Single layer of BERT consisting of self-attention and feed-forward network.
     """
@@ -52,7 +52,7 @@ class RobertaLayer(nn.Module):
         Args:
             config (Dict[str, Any]): Configuration dictionary containing model parameters.
         """
-        super(RobertaLayer, self).__init__()
+        super(BertLayer, self).__init__()
         self.attention = nn.MultiheadAttention(
             embed_dim=config["hidden_size"], num_heads=config["num_heads"], batch_first=True
         )
@@ -95,7 +95,7 @@ class Roberta(nn.Module):
     def __init__(self, config: Dict[str, Any] = settings["model"]) -> None:
         super(Roberta, self).__init__()
         self.embeddings = RobertaEmbeddings(config)
-        self.encoder = nn.ModuleList([RobertaLayer(config) for _ in range(config["num_layers"])])
+        self.encoder = nn.ModuleList([BertLayer(config) for _ in range(config["num_layers"])])
         self.config = config
 
     def forward(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -118,7 +118,7 @@ class Roberta(nn.Module):
         return hidden_states
 
 
-class RobertaToxic(nn.Module):
+class BertToxic(nn.Module):
     """
     BERT model extended with a classification head for toxic comment classification.
     """
@@ -132,7 +132,7 @@ class RobertaToxic(nn.Module):
             num_labels (int): Number of labels for classification.
             config (Dict[str, Any]): Configuration dictionary containing model parameters.
         """
-        super(RobertaToxic, self).__init__()
+        super(BertToxic, self).__init__()
         self.bert = bert_model
         self.dropout = nn.Dropout(0.1)
         self.classifier = nn.Linear(config["hidden_size"], num_labels)
