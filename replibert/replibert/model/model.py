@@ -7,35 +7,26 @@ import torch.nn.functional as F
 from configuration.config import settings
 
 
-class BertEmbeddings(nn.Module):
+class RobertaEmbeddings(nn.Module):
     """
-    BERT Embedding layer.
+    RoBERTa Embedding layer.
 
-    This layer includes word embeddings, position embeddings, and token type embeddings.
-    It also applies layer normalization and dropout to the embeddings.
+    Includes word embeddings and position embeddings, but no token type embeddings.
     """
 
     def __init__(self, config: Dict[str, Any] = settings["model"]) -> None:
-        """
-        Initialize the BERTEmbeddings layer.
-
-        Args:
-            config (Dict[str, Any]): Configuration dictionary containing model parameters.
-        """
-        super(BertEmbeddings, self).__init__()
+        super(RobertaEmbeddings, self).__init__()
         self.word_embeddings = nn.Embedding(config["vocab_size"], config["hidden_size"])
         self.position_embeddings = nn.Embedding(config["max_position_embeddings"], config["hidden_size"])
-        self.token_type_embeddings = nn.Embedding(2, config["hidden_size"])
         self.LayerNorm = nn.LayerNorm(config["hidden_size"], eps=1e-12)
         self.dropout = nn.Dropout(0.1)
 
-    def forward(self, input_ids: torch.Tensor, token_type_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass for the BERTEmbeddings layer.
+        Forward pass for the RoBERTaEmbeddings layer.
 
         Args:
             input_ids (torch.Tensor): Tensor of input token IDs.
-            token_type_ids (Optional[torch.Tensor]): Tensor of token type IDs. Defaults to None.
 
         Returns:
             torch.Tensor: Tensor of embeddings.
@@ -43,20 +34,13 @@ class BertEmbeddings(nn.Module):
         seq_length = input_ids.size(1)
         positions = torch.arange(seq_length, dtype=torch.long, device=input_ids.device).unsqueeze(0).expand_as(
             input_ids)
-        if token_type_ids is None:
-            token_type_ids = torch.zeros_like(input_ids)
-
-        embeddings = (
-                self.word_embeddings(input_ids)
-                + self.position_embeddings(positions)
-                + self.token_type_embeddings(token_type_ids)
-        )
+        embeddings = self.word_embeddings(input_ids) + self.position_embeddings(positions)
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
         return embeddings
 
 
-class BertLayer(nn.Module):
+class RobertaLayer(nn.Module):
     """
     Single layer of BERT consisting of self-attention and feed-forward network.
     """
@@ -68,7 +52,7 @@ class BertLayer(nn.Module):
         Args:
             config (Dict[str, Any]): Configuration dictionary containing model parameters.
         """
-        super(BertLayer, self).__init__()
+        super(RobertaLayer, self).__init__()
         self.attention = nn.MultiheadAttention(
             embed_dim=config["hidden_size"], num_heads=config["num_heads"], batch_first=True
         )
@@ -103,37 +87,29 @@ class BertLayer(nn.Module):
         return self.output_layer_norm(hidden_states + self.dropout(layer_output))
 
 
-class Bert(nn.Module):
+class Roberta(nn.Module):
     """
-    BERT model consisting of embeddings and multiple layers of BERT.
+    RoBERTa model consisting of embeddings and multiple layers of transformers.
     """
 
     def __init__(self, config: Dict[str, Any] = settings["model"]) -> None:
-        """
-        Initialize the Bert model.
-
-        Args:
-            config (Dict[str, Any]): Configuration dictionary containing model parameters.
-        """
-        super(Bert, self).__init__()
-        self.embeddings = BertEmbeddings(config)
-        self.encoder = nn.ModuleList([BertLayer(config) for _ in range(config["num_layers"])])
+        super(Roberta, self).__init__()
+        self.embeddings = RobertaEmbeddings(config)
+        self.encoder = nn.ModuleList([RobertaLayer(config) for _ in range(config["num_layers"])])
         self.config = config
 
-    def forward(self, input_ids: torch.Tensor, token_type_ids: Optional[torch.Tensor] = None,
-                attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
-        Forward pass for the Bert model.
+        Forward pass for the RoBERTa model.
 
         Args:
             input_ids (torch.Tensor): Tensor of input token IDs.
-            token_type_ids (Optional[torch.Tensor]): Tensor of token type IDs. Defaults to None.
             attention_mask (Optional[torch.Tensor]): Tensor of attention mask. Defaults to None.
 
         Returns:
             torch.Tensor: Tensor of output hidden states.
         """
-        embeddings = self.embeddings(input_ids, token_type_ids)
+        embeddings = self.embeddings(input_ids)
         hidden_states = embeddings
 
         for layer in self.encoder:
@@ -142,12 +118,12 @@ class Bert(nn.Module):
         return hidden_states
 
 
-class BertToxic(nn.Module):
+class RobertaToxic(nn.Module):
     """
     BERT model extended with a classification head for toxic comment classification.
     """
 
-    def __init__(self, bert_model: Bert, num_labels: int, config: Dict[str, Any] = settings["model"]) -> None:
+    def __init__(self, bert_model: Roberta, num_labels: int, config: Dict[str, Any] = settings["model"]) -> None:
         """
         Initialize the BertToxic model.
 
@@ -156,7 +132,7 @@ class BertToxic(nn.Module):
             num_labels (int): Number of labels for classification.
             config (Dict[str, Any]): Configuration dictionary containing model parameters.
         """
-        super(BertToxic, self).__init__()
+        super(RobertaToxic, self).__init__()
         self.bert = bert_model
         self.dropout = nn.Dropout(0.1)
         self.classifier = nn.Linear(config["hidden_size"], num_labels)
