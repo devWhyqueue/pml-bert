@@ -14,6 +14,9 @@ def initialize_with_weights(model: Roberta) -> None:
     state_dict = hf_model.embeddings.state_dict()
     truncated_pos_embeddings = state_dict['position_embeddings.weight'][:model.config['max_position_embeddings'], :]
     state_dict['position_embeddings.weight'] = truncated_pos_embeddings
+    if "token_type_embeddings.weight" in state_dict:
+        del state_dict["token_type_embeddings.weight"]
+
     model.embeddings.load_state_dict(state_dict)
 
     # Copy encoder layers
