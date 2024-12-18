@@ -185,15 +185,15 @@ def tokenize(dataset_dir: str, text_field: str, preprocess: bool, destination: s
               help="Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred', 'sst2'.")
 @click.option("--dataset_dir", type=click.Path(exists=True), required=True,
               help="Directory containing the tokenized dataset to process.")
-@click.option("--weights_dir", type=click.Path(), help="Directory to save the model weights.")
-def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
+@click.option("--weight_dir", type=click.Path(), help="Directory to save the model weights.")
+def finetune(dataset_name: str, dataset_dir: str, weight_dir: str = None):
     """
     Fine-tune a BERT model on the specified dataset.
 
     Parameters:
     dataset_name (str): Name of the dataset to use.
     dataset_dir (str): Directory containing the dataset to process.
-    weights_dir (str): Directory to save the model weights.
+    weight_dir (str): Directory to save the model weights.
     """
     from finetuning.classification import finetune as finetune_model
     from data.utils import load_data
@@ -207,7 +207,7 @@ def finetune(dataset_name: str, dataset_dir: str, weights_dir: str = None):
     val_dataset.input_field = ['input_ids', 'attention_mask']
     test_dataset.input_field = ['input_ids', 'attention_mask']
 
-    finetune_model(train_dataset, val_dataset, test_dataset, weights_dir)
+    finetune_model(train_dataset, val_dataset, test_dataset, weight_dir)
 
 
 @cli.command()

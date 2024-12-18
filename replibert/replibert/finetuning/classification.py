@@ -7,7 +7,6 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
 from torch import GradScaler, autocast
-from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
@@ -23,7 +22,7 @@ log = get_logger(__name__)
 
 
 def finetune(train_dataset: FineTuningDataset, val_dataset: FineTuningDataset, test_dataset: FineTuningDataset,
-             weights_dir: Optional[str] = None, config: dict = settings["finetuning"]) -> None:
+             weight_dir: Optional[str] = None, config: dict = settings["finetuning"]) -> None:
     """
     Fine-tunes a BERT model on the training dataset and evaluates it on the validation and testing datasets.
 
@@ -31,7 +30,7 @@ def finetune(train_dataset: FineTuningDataset, val_dataset: FineTuningDataset, t
         train_dataset (FineTuningDataset): Training dataset.
         val_dataset (FineTuningDataset): Validation dataset.
         test_dataset (FineTuningDataset): Testing dataset.
-        weights_dir (Optional[str]): Directory to save the model weights.
+        weight_dir (Optional[str]): Directory to save the model weights.
         config (dict): Configuration settings.
     """
     rank, world_size = _initialize_distributed()
@@ -42,9 +41,9 @@ def finetune(train_dataset: FineTuningDataset, val_dataset: FineTuningDataset, t
     _finetune_model(model, train_dataset, val_dataset, test_dataset, rank, world_size, config)
 
     dist.barrier()
-    if weights_dir and rank == 0:
-        log.info("Saving model weights")
-        torch.save(model.module.state_dict(), f"{weights_dir}/bert_toxic_weights.pth")
+    if weight_dir and rank == 0:
+        torch.save(model.module.state_dict(), f"{weight_dir}/bert_toxic_weights.pth")
+        log.info(f"Model weights saved to {weight_dir}")
 
     dist.destroy_process_group()
 
@@ -86,17 +85,14 @@ def _finetune_model(model: nn.Module, train_dataset: FineTuningDataset, val_data
     train_loader = _get_train_data_loader(train_dataset, rank, world_size, config)
     optimizer = optim.AdamW(model.parameters(), lr=float(config["learning_rate"]),
                             weight_decay=float(config["weight_decay"]))
-    scheduler = CosineAnnealingLR(optimizer, T_max=config["num_epochs"])
     criterion = nn.BCEWithLogitsLoss().to(config["device"])
     scaler = GradScaler()
     for epoch in range(config["num_epochs"]):
-        log.info(f"Learning rate in epoch {epoch + 1} is {scheduler.get_last_lr()[0]:.8f}")
         train_loader.sampler.set_epoch(epoch)
         model.train()
         _finetune_one_epoch(config, criterion, model, optimizer, train_loader, scaler)
         log.info(f"Evaluating trained model after epoch {epoch + 1}")
         evaluate_on_all_datasets(model, train_dataset, val_dataset, test_dataset, config)
-        scheduler.step()
 
 
 def _get_train_data_loader(train_dataset: FineTuningDataset, rank: int, world_size: int, config: dict) -> DataLoader:
@@ -111,28 +107,30 @@ def _get_train_data_loader(train_dataset: FineTuningDataset, rank: int, world_si
     Returns:
         DataLoader: Training data loader.
     """
-    _set_seeds()
     generator = torch.Generator().manual_seed(42)
     train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, seed=42)
     train_loader = DataLoader(
-        train_dataset, batch_size=config["batch_size"], sampler=train_sampler,
+        train_dataset, batch_size=config["batch_size"], sampler=train_sampler, worker_init_fn=_set_seeds,
         num_workers=get_available_cpus(), pin_memory=True, generator=generator
     )
 
     return train_loader
 
 
-def _set_seeds():
+def _set_seeds(worker_id: int) -> None:
     """
-    Sets the random seeds for reproducibility.
+    Sets the random seeds for reproducibility in the worker process.
 
-    This function sets the random seed for Python's `random` module, NumPy, and PyTorch (both CPU and CUDA).
+    Args:
+        worker_id (int): The ID of the worker process.
     """
-    seed = 42
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    log.debug(f"Setting seeds for worker {worker_id}")
+    torch.use_deterministic_algorithms(True)
+    worker_seed = torch.initial_seed() % 2 ** 32
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
+    torch.manual_seed(worker_seed)
+    torch.cuda.manual_seed_all(worker_seed)
 
 
 def _finetune_one_epoch(config: dict, criterion: nn.Module, model: nn.Module, optimizer: optim.Optimizer,

@@ -11,7 +11,7 @@ from sklearn.utils import resample
 from torch.utils.data import Subset
 from transformers import BertTokenizer
 
-from configuration.config import get_logger
+from configuration.config import get_logger, settings
 from data.finetuning.datasets import FineTuningDataset
 from utils import get_available_cpus
 
@@ -57,13 +57,14 @@ def tf_idf_vectorize(train_dataset: FineTuningDataset, val_dataset: FineTuningDa
                                       num_proc=get_available_cpus(), desc="Vectorizing test dataset")
 
 
-def bert_tokenize(dataset: Dataset, text_field: str) -> Dataset:
+def bert_tokenize(dataset: Dataset, text_field: str, config: dict = settings["model"]) -> Dataset:
     """
     Tokenizes the text data in the given dataset using the BERT tokenizer.
 
     Args:
         dataset (Dataset): The HuggingFace dataset to tokenize.
         text_field (str): The field containing the text data.
+        config (dict): Configuration settings.
 
     Returns:
         Dataset: The tokenized dataset.
@@ -74,7 +75,7 @@ def bert_tokenize(dataset: Dataset, text_field: str) -> Dataset:
         texts = batch[text_field]
         tokenized = tokenizer(
             texts,
-            max_length=256,
+            max_length=config["max_position_embeddings"],
             padding="max_length",
             truncation=True,
             return_tensors="pt"
