@@ -142,11 +142,10 @@ def baseline(dataset_name: str, dataset_dir: str, dataset_fraction: float = 1.0)
     log.info(f"Loading data for {dataset_name}...")
     train_dataset, val_dataset, test_dataset = load_data(dataset_name, dataset_dir, dataset_fraction=dataset_fraction)
 
-    if dataset_name in ['sst2', 'civil_comments']:
+    if dataset_name in ['sst2', 'civil_comments','jigsaw_toxicity_pred']:
         log.info("Performing binary classification...")
         binary_classification(train_dataset, val_dataset, test_dataset)
-    elif dataset_name == 'jigsaw_toxicity_pred':
-        raise NotImplementedError("Jigsaw toxicity prediction is not yet implemented.")
+        
     else:
         log.error("Unknown dataset name. This should not happen due to limited options.")
 
