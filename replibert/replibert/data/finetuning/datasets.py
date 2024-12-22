@@ -126,26 +126,10 @@ class JigsawToxicityDataset(FineTuningDataset):
         super().__init__("comment_text", input_field, "toxic", dataset_dir, hf_dataset, split, transformation)
 
     def get_label(self, item: dict) -> torch.tensor:
-        yi = torch.tensor([
-            item["toxic"],
-            item["severe_toxic"],
-            item["obscene"],
-            item["threat"],
-            item["insult"],
-            item["identity_hate"]
-        ], dtype=torch.int8)
-        return yi
+        return torch.tensor(item["toxic"], dtype=torch.float32)
 
     def get_label_vector(self) -> torch.tensor:
-        y = torch.tensor([
-            self.hf_dataset["toxic"],
-            self.hf_dataset["severe_toxic"],
-            self.hf_dataset["obscene"],
-            self.hf_dataset["threat"],
-            self.hf_dataset["insult"],
-            self.hf_dataset["identity_hate"]
-        ], dtype=torch.int8)
-        return y.T
+        return torch.tensor(self.hf_dataset["toxic"], dtype=torch.float32)
 
 
 class SST2Dataset(FineTuningDataset):

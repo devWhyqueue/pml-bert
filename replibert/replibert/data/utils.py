@@ -1,6 +1,6 @@
 from typing import Callable, Tuple, Optional, Any, Type
 
-from datasets import Dataset, disable_progress_bar, enable_progress_bar
+from datasets import Dataset, ClassLabel, disable_progress_bar, enable_progress_bar
 
 from configuration.config import get_logger
 from data.finetuning.datasets import CivilCommentsDataset, JigsawToxicityDataset, SST2Dataset, FineTuningDataset
@@ -154,7 +154,8 @@ def _class_encode_column(dataset: Dataset, label_col: str) -> Tuple[Dataset, str
         dataset = dataset.map(_binarize_labels, num_proc=get_available_cpus())
         label_col = "binary_label"
 
-    dataset = dataset.class_encode_column(label_col)
+    if not isinstance(dataset.features[label_col], ClassLabel):
+        dataset = dataset.class_encode_column(label_col)
 
     return dataset, label_col
 
