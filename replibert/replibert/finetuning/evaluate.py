@@ -1,6 +1,6 @@
 import torch
 import torch.distributed as dist
-from sklearn.metrics import classification_report, roc_auc_score
+from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix
 from torch import nn
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
@@ -67,7 +67,8 @@ def evaluate(dataset: FineTuningDataset, weights: str | dict, config: dict = set
     combined_labels, combined_preds, combined_probs = _gather_all_predictions(local_labels, local_preds, local_probs)
 
     if is_main_process():
-        _log_metrics(total_loss, total_samples, combined_labels, combined_preds, combined_probs)
+        _log_metrics(total_loss, total_samples, combined_labels, combined_preds, combined_probs, dataset,
+                     num_examples=25)
 
 
 def _calculate_local_results(model: torch.nn.Module, test_loader: DataLoader, device: str):
@@ -160,9 +161,10 @@ def _gather_all_predictions(local_labels, local_preds, local_probs):
     return combined_labels, combined_preds, combined_probs
 
 
-def _log_metrics(total_loss: float, total_samples: int, labels, preds, probs):
+def _log_metrics(total_loss: float, total_samples: int, labels, preds, probs, dataset, num_examples: int = 5):
     """
-    Log evaluation metrics.
+    Log evaluation metrics and display best, median (toxic comments with median confidence), and worst test cases
+    based on confidence.
 
     Args:
         total_loss (float): Total loss value.
@@ -170,6 +172,8 @@ def _log_metrics(total_loss: float, total_samples: int, labels, preds, probs):
         labels (list): Combined labels.
         preds (list): Combined predictions.
         probs (list): Combined probabilities.
+        dataset (FineTuningDataset): The dataset containing the comments.
+        num_examples (int): The number of best, median, and worst test cases to display.
 
     Returns:
         None
@@ -177,8 +181,50 @@ def _log_metrics(total_loss: float, total_samples: int, labels, preds, probs):
     avg_loss = total_loss / total_samples
     log.info(f"Evaluation complete - Loss: {avg_loss:.4f}")
 
+    # Classification Report
     class_report = classification_report(labels, preds)
     log.info(f"Classification Report:\n{class_report}")
 
+    # ROC-AUC Score
     roc_auc = roc_auc_score(labels, probs, average="weighted")
     log.info(f"ROC-AUC Score: {roc_auc:.4f}")
+
+    # Confusion Matrix
+    cm = confusion_matrix(labels, preds)
+
+    # Print confusion matrix
+    log.info(f"Confusion Matrix:\n{cm}")
+
+    comments = dataset.get_texts()
+    confidence_data = [(prob, comment, label, pred) for prob, comment, label, pred in
+                       zip(probs, comments, labels, preds)]
+
+    confidence_data_sorted = sorted(confidence_data, key=lambda x: x[0], reverse=True)
+
+    best_cases = confidence_data_sorted[:num_examples]
+
+    # Filter toxic comments
+    toxic_cases = [case for case in confidence_data_sorted if case[2] == 1]  # Only toxic comments
+    toxic_cases_sorted = sorted(toxic_cases, key=lambda x: x[0], reverse=True)
+
+    # Get median toxic comments based on confidence
+    middle_index = len(toxic_cases_sorted) // 2
+    half_num_examples = num_examples // 2
+    median_cases = toxic_cases_sorted[max(0, middle_index - half_num_examples):
+                                      min(len(toxic_cases_sorted), middle_index + half_num_examples + (num_examples % 2))]
+
+    # Filter incorrect predictions
+    wrong_predictions = [case for case in confidence_data_sorted if case[2] != case[3]]
+    worst_cases = sorted(wrong_predictions, key=lambda x: x[0])[:num_examples]
+
+    for i, case in enumerate(best_cases):
+        log.info(
+            f"Best Test Case {i + 1} - Confidence: {case[0]:.4f}\nComment: {case[1]}\nTrue Label: {case[2]}\nPredicted Label: {case[3]}")
+
+    for i, case in enumerate(median_cases):
+        log.info(
+            f"Median Test Case {i + 1} - Confidence: {case[0]:.4f}\nComment: {case[1]}\nTrue Label: {case[2]}\nPredicted Label: {case[3]}")
+
+    for i, case in enumerate(worst_cases):
+        log.info(
+            f"Worst Test Case {i + 1} - Confidence: {case[0]:.4f}\nComment: {case[1]}\nTrue Label: {case[2]}\nPredicted Label: {case[3]}")
