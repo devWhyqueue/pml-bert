@@ -1,10 +1,11 @@
 from typing import Tuple
 
+import os
 import numpy as np
 import torch
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, roc_auc_score
+from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
 
@@ -26,8 +27,8 @@ def binary_classification(train_data: FineTuningDataset, val_data: FineTuningDat
     """
     log.info("Performing grid search for binary classification...")
     methods = [LogisticRegression(), CalibratedClassifierCV(LinearSVC()), MultinomialNB()]
-    do_preprocessing = [True, False]
-    pos_proportions = [None, 0.1, 0.25, 0.5]
+    do_preprocessing = [False]
+    pos_proportions = [0.1]
     for method in methods:
         for do_prep in do_preprocessing:
             for pos_proportion in pos_proportions:
@@ -51,7 +52,7 @@ def _prepare_data(train_data: FineTuningDataset, val_data: FineTuningDataset, te
     Args:
         train_data (FineTuningDataset): The training dataset.
         val_data (FineTuningDataset): The validation dataset.
-        test_data (FineTuningDataset): The test dataset.
+         test_data (FineTuningDataset): The test dataset.
         do_prep (bool): Whether to perform preprocessing.
         pos_proportion (float): The proportion of positive samples in the training dataset.
 
@@ -79,7 +80,7 @@ def _prepare_data(train_data: FineTuningDataset, val_data: FineTuningDataset, te
     x_val, y_val = _to_numpy_arrays(val_data)
     x_test, y_test = _to_numpy_arrays(test_data)
 
-    return x_train, y_train, x_val, y_val, x_test, y_test,
+    return x_train, y_train, x_val, y_val, x_test, y_test
 
 
 def _to_numpy_arrays(dataset: FineTuningDataset) -> Tuple[np.ndarray, np.ndarray]:
@@ -100,8 +101,8 @@ def _to_numpy_arrays(dataset: FineTuningDataset) -> Tuple[np.ndarray, np.ndarray
 def _evaluate_model(model: CalibratedClassifierCV, x_train: np.ndarray, y_train: np.ndarray,
                     x_val: np.ndarray, y_val: np.ndarray, x_test: np.ndarray, y_test: np.ndarray) -> None:
     """
-    Evaluate the performance of a model on training, validation, and test sets.
-
+    Evaluate the performance of a model on training, validation, and test sets, including ROC AUC, classification repor>
+    and confusion matrix.
     Args:
         model (CalibratedClassifierCV): The trained model.
         x_train (np.ndarray): The training features.
@@ -116,15 +117,30 @@ def _evaluate_model(model: CalibratedClassifierCV, x_train: np.ndarray, y_train:
     log.info(f"Train set ROC AUC: {train_roc_auc}")
     report = classification_report(y_train, model.predict(x_train))
     log.info(f"Train set classification report:\n{report}")
+    train_conf_matrix = confusion_matrix(y_train, model.predict(x_train))
+    log.info(f"Train set confusion matrix:\n{train_conf_matrix}")
 
     log.info("Validation set evaluation...")
     val_roc_auc = roc_auc_score(y_val, model.predict_proba(x_val)[:, 1])
     log.info(f"Validation set ROC AUC: {val_roc_auc}")
     report = classification_report(y_val, model.predict(x_val))
     log.info(f"Validation set classification report:\n{report}")
-
+    val_conf_matrix = confusion_matrix(y_val, model.predict(x_val))
+    log.info(f"Validation set confusion matrix:\n{val_conf_matrix}")
     log.info("Test set evaluation...")
     test_roc_auc = roc_auc_score(y_test, model.predict_proba(x_test)[:, 1])
     log.info(f"Test set ROC AUC: {test_roc_auc}")
     report = classification_report(y_test, model.predict(x_test))
     log.info(f"Test set classification report:\n{report}")
+    test_conf_matrix = confusion_matrix(y_test, model.predict(x_test))
+    log.info(f"Test set confusion matrix:\n{test_conf_matrix}")
+
+    test_true_labels = y_test
+    test_pred_probs = model.predict_proba(x_test)[:, 1]
+    file_path = "roc_data.txt"
+
+    with open(file_path, 'a') as f:
+        if os.path.getsize(file_path) == 0:
+            f.write("Model, TrueLabel,PredictedProbability\n")
+        for true_label, pred_prob in zip(test_true_labels, test_pred_probs):
+            f.write(f"{model},{true_label},{pred_prob}\n")
