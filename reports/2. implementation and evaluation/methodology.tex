@@ -1,0 +1,44 @@
+\section{Methodology}\label{sec:meth}
+
+In this section, we describe the methods employed for fine-tuning the BERT model on the task of toxic comment classification. The methodology includes preprocessing of textual data, model architecture design, training strategies, and hyperparameter optimization.
+
+\subsection{Feature selection and preprocessing} As discussed in the previous milestone report, there are several approaches to transform textual data into numerical vectors. Traditional methods such as BoW and TF-IDF rely on token frequencies. More modern techniques utilize pre-trained embeddings, such as Word2Vec, GloVe, and FastText. In this project, we use embedding-based input representations as employed in the BERT model. BERT's input representation combines token, segment, and positional embeddings to effectively capture context-dependent relationships. \cite{Devlin2019}
+
+Although preprocessing did not show significant benefits for the baseline models, its impact will be re-evaluated during BERT fine-tuning. Specific preprocessing steps are discussed in the prior milestone report. For BERT, tokenization is performed using the WordPiece tokenizer, which splits words into subwords to handle out-of-vocabulary issues. Padding and truncation are applied to ensure input sequences have uniform lengths. The default maximum sequence length is 512. However, we will experiment with shorter lengths to optimize computational efficiency.
+
+\subsection{Methods}
+The task of toxic comment classification can be defined as a binary classification problem. To address this, we added a classification head on top of the pre-trained BERT model. This head consists of a fully connected linear layer that outputs logits, which are then passed through a sigmoid activation function to produce probabilities for binary classification.
+
+The fine-tuning procedure involves updating all layers of the BERT model. The algorithm optionally balances the dataset to a specified positive class proportion (\texttt{pos\_proportion}) and then fine-tunes the model for a predefined number of epochs.
+
+Given an input sequence, BERT generates token embeddings, which are contextualized representations of the input tokens. Along with the input tokens, an \texttt{attention\_mask} is provided to inform the model about padded tokens that should not contribute to the computations. These embeddings are passed through the classification head to compute the logits, which represent the raw predictions of the model.
+
+The loss is computed using the binary cross-entropy with logits loss (BCEWithLogitsLoss), which combines a sigmoid activation with a cross-entropy loss function. Backpropagation is performed using the AdamW optimizer, a widely adopted optimizer in transformer-based models due to its improved weight decay mechanism. \cite{Loshchilov2017}
+
+To enhance efficiency, we progressively refined the training and evaluation pipeline using distributed computing and precision optimization strategies. Initially, we adopted distributed data parallelism (DDP) to parallelize both training and evaluation across up to eight NVIDIA A100 GPUs, each with 80~GB of VRAM. This implementation leveraged PyTorch's DDP framework, which is well-documented for its ability to minimize inter-GPU communication overhead while maintaining synchronized updates. Specifically, DDP ensures that gradients are averaged across all processes during the backward pass, enabling seamless scaling across multiple devices. \cite{PyTorch2023}
+
+Furthermore, mixed-precision training using FP16 format and dynamic gradient scaling was employed. This approach reduced memory consumption and accelerated matrix operations without compromising numerical stability. Together, these optimizations formed a robust pipeline capable of handling large-scale data efficiently. \cite{PyTorch2023a}
+
+\subsection{Hyperparameter and model selection}
+
+The hyperparameter search was performed to identify the best configuration for BERT fine-tuning. Detailed results of all our experiments can be found in our GitHub repository and a selection will be shown in \cref{sec:results}. \cite{Queisler2024}
+
+\noindent The following hyperparameters were considered:
+
+\begin{itemize}
+    \item \textbf{Sequence length:} $[64, 128, 256, 512]$
+    \item \textbf{Positive class proportion:} $[\text{as is } (\sim 0.06), 0.1, 0.25]$
+    \item \textbf{Batch size:} $[64, 256, 1024]$
+    \item \textbf{Preprocessing:} $[\text{False}, \text{True}]$
+    \item \textbf{Learning rate:} $[1 \times 10^{-7}, 1 \times 10^{-6}, 1 \times 10^{-5}, 1 \times 10^{-4}, 1 \times 10^{-3}]$
+    \item \textbf{Number of epochs:} $[1, 2, 3]$
+    \item \textbf{Weight decay:} $[0, 0.1, 1, 10, 100]$
+    \item \textbf{Optimizer:} AdamW
+    \item \textbf{Loss function:} BCEWithLogitsLoss
+\end{itemize}
+
+\noindent AdamW was chosen as the optimizer due to its decoupled weight decay mechanism, which has been shown to be effective for fine-tuning transformer models like BERT. This choice aligns with its widespread adoption in transformer-based tasks. AdamW effectively addresses overfitting by decoupling weight decay from the gradient updates, thereby preserving the learning dynamics. \cite{Nabila2024, Yagci2024, Putrada2023}
+
+BCEWithLogitsLoss was selected for its compatibility with binary classification tasks, where logits (raw model outputs) are directly utilized. This avoids numerical instabilities that could arise when using separate sigmoid activations followed by cross-entropy loss. Its seamless integration with the sigmoid activation ensures reliable gradient flow, making it the standard choice for binary classification. \cite{PyTorch2023b}
+
+

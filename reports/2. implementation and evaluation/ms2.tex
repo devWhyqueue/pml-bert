@@ -1,0 +1,38 @@
+\documentclass[10pt,a4paper,oneside]{article}
+
+% Configuration
+\input{config.tex}
+
+% Header
+\title{Project Machine Learning\\--- Milestone 2 ---} 
+\author{[Imene Ben Ammar, Julian Dobler, Yannik Queisler]}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\input{abstract.tex}
+
+% Table of contents
+\thispagestyle{empty}
+\setcounter{tocdepth}{2}
+\tableofcontents
+\newpage
+\setcounter{page}{1}
+
+\input{intro.tex}
+\input{methodology.tex}
+\input{generalization.tex}
+\input{results.tex}
+\input{discussion.tex}
+
+% Appendix
+\clearpage
+\pagenumbering{gobble}
+\input{appendix.tex}
+
+% References
+\clearpage
+\bibliography{references}
+
+\end{document}

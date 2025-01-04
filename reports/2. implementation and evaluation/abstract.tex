@@ -1,0 +1,7 @@
+\begin{abstract}
+    In this milestone, we fine-tuned BERT for toxic comment classification, building on the foundational work of implementing baseline models in the previous milestone. The baseline methods -- logistic regression, support vector machines, and naive Bayes -- were revisited to establish benchmarks for evaluating BERT's performance. The fine-tuning process involved experimenting with various configurations to identify the optimal setup for BERT. 
+    Key results highlighted significant performance gains by the fine-tuned BERT model, particularly in metrics such as class 1 F1-score and AUC-ROC, underscoring its ability to capture contextual nuances in text more effectively than the baseline models. Analyzing low-confidence predictions revealed that toxicity can be partly subjective and should be adjusted to context (e.g., by threshold). Additionally, a sequence length of 128 might present problems in longer comments with toxicity at the end. Addressing these challenges is a priority for future work, along with expanding the fine-tuning efforts to the Jigsaw dataset for deeper analysis and broader applicability. 
+    Furthermore, it is recommended that the model should only be deployed with a confidence score accompanying its predictions to ensure transparency and reliability in real-world applications.
+    The project's codebase is publicly accessible on GitHub.\footnote{\url{https://github.com/devWhyqueue/pml-bert}}
+    \end{abstract}
+    
