@@ -14,6 +14,7 @@ from configuration.config import settings, get_logger
 from data.finetuning.datasets import FineTuningDataset
 from data.finetuning.transform import balance_dataset
 from finetuning.evaluate import evaluate_on_all_datasets
+from finetuning.loss import FocalLoss
 from model.initialize import initialize_with_weights
 from model.model import Bert, BertToxic
 from utils import get_available_cpus, is_main_process, _initialize_distributed
@@ -85,7 +86,7 @@ def _finetune_model(model: nn.Module, train_dataset: FineTuningDataset, val_data
     train_loader = _get_train_data_loader(train_dataset, rank, world_size, config)
     optimizer = optim.AdamW(model.parameters(), lr=float(config["learning_rate"]),
                             weight_decay=float(config["weight_decay"]))
-    criterion = nn.BCEWithLogitsLoss().to(config["device"])
+    criterion = FocalLoss().to(config["device"])
     scaler = GradScaler()
     for epoch in range(config["num_epochs"]):
         train_loader.sampler.set_epoch(epoch)
