@@ -19,10 +19,6 @@ data:
       split: null
       config_kwargs:
         data_dir: 'data/jigsaw_toxicity_pred'
-    - identifier: 'stanfordnlp/sst2'
-      short: 'sst2'
-      name: null
-      split: null
 
 model:
   hidden_size: 768
@@ -38,4 +34,5 @@ finetuning:
   learning_rate: 1e-4
   weight_decay: 0.0
   num_epochs: 1
+  threshold: 0.5
   device: "cuda"

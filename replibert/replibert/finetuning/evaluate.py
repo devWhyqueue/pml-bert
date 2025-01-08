@@ -62,7 +62,7 @@ def evaluate(dataset: FineTuningDataset, weights: str | dict, config: dict = set
 
     model.eval()
     local_loss, local_samples, local_labels, local_preds, local_probs \
-        = _calculate_local_results(model, test_loader, config["device"])
+        = _calculate_local_results(model, test_loader, config['threshold'], config["device"])
     total_loss, total_samples = _aggregate_scalar_values(local_loss, local_samples, config["device"])
     combined_labels, combined_preds, combined_probs = _gather_all_predictions(local_labels, local_preds, local_probs)
 
@@ -70,13 +70,14 @@ def evaluate(dataset: FineTuningDataset, weights: str | dict, config: dict = set
         _log_metrics(total_loss, total_samples, combined_labels, combined_preds, combined_probs)
 
 
-def _calculate_local_results(model: torch.nn.Module, test_loader: DataLoader, device: str):
+def _calculate_local_results(model: torch.nn.Module, test_loader: DataLoader, threshold: float, device: str):
     """
     Calculate local loss and predictions for the test dataset.
 
     Args:
         model (torch.nn.Module): The model to evaluate.
         test_loader (DataLoader): DataLoader for the test dataset.
+        threshold (float): Threshold for binary classification.
         device (str): Device to run the evaluation on (e.g., 'cpu' or 'cuda').
 
     Returns:
@@ -97,7 +98,7 @@ def _calculate_local_results(model: torch.nn.Module, test_loader: DataLoader, de
 
             logits = model(input_ids=input_ids, attention_mask=attention_mask).squeeze(-1)
             probabilities = torch.sigmoid(logits)
-            predictions = (probabilities > 0.5).long()
+            predictions = (probabilities > threshold).long()
             loss = criterion(logits, labels)
 
             batch_size = labels.size(0)
