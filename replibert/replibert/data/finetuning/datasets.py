@@ -1,9 +1,11 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Callable, Tuple, Optional
 
 import numpy as np
 import torch
-from datasets import load_from_disk
+from datasets import load_from_disk, Dataset, disable_progress_bar, enable_progress_bar
+
+from utils import get_available_cpus
 
 
 class FineTuningDataset(torch.utils.data.Dataset, ABC):
@@ -11,7 +13,7 @@ class FineTuningDataset(torch.utils.data.Dataset, ABC):
     Abstract base class for fine-tuning datasets.
 
     Args:
-        input_field (str): The field name of the vectorized input data.
+        input_fields (list): The input fields to use for the dataset.
         text_field (str): The field name of the text data.
         dataset_dir (str, optional): Directory where the dataset is stored. Defaults to None.
         hf_dataset (optional): Pre-loaded Hugging Face dataset. Defaults to None.
@@ -19,10 +21,10 @@ class FineTuningDataset(torch.utils.data.Dataset, ABC):
         transformation (Callable, optional): Transformation function to apply to each example (text). Defaults to None.
     """
 
-    def __init__(self, text_field: str, input_field: str, label_col: str, dataset_dir: str = None, hf_dataset=None,
+    def __init__(self, text_field: str, input_fields: list, label_col: str, dataset_dir: str = None, hf_dataset=None,
                  split: str = 'train', transformation: Optional[Callable] = None):
         self.text_field = text_field
-        self.input_field = input_field
+        self.input_fields = input_fields
         self.label_col = label_col
         self.dataset_dir = dataset_dir
         self.split = split
@@ -53,10 +55,10 @@ class FineTuningDataset(torch.utils.data.Dataset, ABC):
             Tuple[torch.tensor, torch.tensor]: A tuple containing the input tensor and the label tensor.
         """
         item = self.hf_dataset[idx]
-        if isinstance(self.input_field, list):
-            xi = torch.tensor([item[field] for field in self.input_field], dtype=torch.int32)
-        elif self.input_field in item:
-            xi = torch.tensor(item[self.input_field], dtype=torch.float32)
+        if isinstance(self.input_fields, list):
+            xi = torch.tensor([item[field] for field in self.input_fields], dtype=torch.int32)
+        elif self.input_fields in item:
+            xi = torch.tensor(item[self.input_fields], dtype=torch.float32)
         else:
             xi = item[self.text_field]
 
@@ -82,12 +84,11 @@ class FineTuningDataset(torch.utils.data.Dataset, ABC):
         Returns:
             torch.tensor: The input vector for the dataset.
         """
-        return torch.tensor(self.hf_dataset[self.input_field], dtype=torch.float32)
+        return torch.tensor(self.hf_dataset[self.input_fields], dtype=torch.float32)
 
-    @abstractmethod
     def get_label(self, item: dict) -> torch.tensor:
         """
-        Abstract method to retrieve the label for a given sample.
+        Retrieve the label for a given sample.
 
         Args:
             item: A sample from the dataset.
@@ -95,51 +96,99 @@ class FineTuningDataset(torch.utils.data.Dataset, ABC):
         Returns:
             Any: The label corresponding to the sample.
         """
-        pass
+        return torch.tensor(item[self.label_col], dtype=torch.float32)
 
-    @abstractmethod
     def get_label_vector(self) -> torch.tensor:
         """
-        Abstract method to retrieve the label vector (samples, labels) for the dataset.
+        Retrieve the label vector (samples, labels) for the dataset.
 
         Returns:
             torch.tensor: The label vector for the dataset.
         """
-        pass
+        return torch.tensor(self.hf_dataset[self.label_col], dtype=torch.float32)
 
 
 class CivilCommentsDataset(FineTuningDataset):
-    def __init__(self, input_field: str = "tf_idf", dataset_dir: str = None, hf_dataset=None, split: str = 'train',
+    """
+    Dataset class for Civil Comments data, inheriting from FineTuningDataset.
+    """
+    def __init__(self, input_fields: list, dataset_dir: str = None, hf_dataset=None, split: str = 'train',
                  transformation: Optional[Callable] = None):
-        super().__init__("text", input_field, "toxicity", dataset_dir, hf_dataset, split, transformation)
+        super().__init__("text", input_fields, "toxicity", dataset_dir, hf_dataset, split, transformation)
+        if hf_dataset:
+            self.hf_dataset = self._add_column(hf_dataset)
+            self.label_col = "max_toxicity"
+            self.hf_dataset = self.hf_dataset.select_columns([self.text_field, self.label_col] + self.input_fields)
 
-    def get_label(self, item: dict) -> torch.tensor:
-        return torch.tensor(item["toxicity"], dtype=torch.float32)
+    @staticmethod
+    def _add_column(hf_dataset: Dataset) -> Dataset:
+        """
+        Adds a column "max_toxicity" to the dataset.
+        This column is the result of applying the max operator across the toxicity-related labels.
 
-    def get_label_vector(self) -> torch.tensor:
-        return torch.tensor(self.hf_dataset["toxicity"], dtype=torch.float32)
+        Args:
+            hf_dataset (Dataset): The Hugging Face dataset to which the column will be added.
+
+        Returns:
+            Dataset: The dataset with the added "max_toxicity" column.
+        """
+        toxicity_labels = ["identity_attack", "insult", "obscene", "severe_toxicity", "sexual_explicit", "threat",
+                           "toxicity"]
+
+        def compute_max_toxicity(row: dict) -> float:
+            """
+            Computes the maximum toxicity value for a given row.
+            """
+            return max(row[label] for label in toxicity_labels)
+
+        disable_progress_bar()
+        hf_dataset = hf_dataset.map(lambda row: {"max_toxicity": compute_max_toxicity(row)},
+                                    num_proc=get_available_cpus())
+        enable_progress_bar()
+        return hf_dataset
 
 
 class JigsawToxicityDataset(FineTuningDataset):
-    def __init__(self, input_field: str = "tf_idf", dataset_dir: str = None, hf_dataset=None, split: str = 'train',
+    """
+    Dataset class for Jigsaw Toxicity Prediction data, inheriting from FineTuningDataset.
+    """
+    def __init__(self, input_fields: list, dataset_dir: str = None, hf_dataset=None, split: str = 'train',
                  transformation: Optional[Callable] = None):
-        super().__init__("comment_text", input_field, "toxic", dataset_dir, hf_dataset, split, transformation)
+        super().__init__("comment_text", input_fields, "toxic", dataset_dir, hf_dataset, split, transformation)
+        if hf_dataset:
+            disable_progress_bar()
+            hf_dataset = self._filter_rows_with_missing_keys(hf_dataset)
+            hf_dataset = self._add_column(hf_dataset)
+            enable_progress_bar()
+            self.label_col = "any_toxic"
+            self.hf_dataset = hf_dataset.select_columns([self.text_field, self.label_col] + self.input_fields)
 
-    def get_label(self, item: dict) -> torch.tensor:
-        return torch.tensor(item["toxic"], dtype=torch.float32)
+    @staticmethod
+    def _filter_rows_with_missing_keys(hf_dataset: Dataset) -> Dataset:
+        """
+        Filters out rows where not all required keys are present.
+        """
+        toxicity_labels = ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"]
 
-    def get_label_vector(self) -> torch.tensor:
-        return torch.tensor(self.hf_dataset["toxic"], dtype=torch.float32)
+        def has_all_keys(row):
+            return all(label in row for label in toxicity_labels)
 
+        filtered_dataset = hf_dataset.filter(has_all_keys, num_proc=get_available_cpus())
+        return filtered_dataset
 
-class SST2Dataset(FineTuningDataset):
-    def __init__(self, input_field: str = "tf_idf", dataset_dir: str = None, hf_dataset=None, split: str = 'train',
-                 transformation: Optional[Callable] = None):
-        super().__init__("sentence", input_field, "label", dataset_dir, hf_dataset, split, transformation)
+    @staticmethod
+    def _add_column(hf_dataset: Dataset) -> Dataset:
+        """
+        Adds a column "any_toxic" to the dataset.
+        This column is the result of applying logical OR across the toxicity labels.
+        """
+        toxicity_labels = ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"]
 
-    def get_label(self, item: dict) -> torch.tensor:
-        yi = torch.tensor(item["label"], dtype=torch.int8)
-        return yi
+        def compute_any_toxic(row: dict) -> float:
+            """
+            Computes the maximum toxicity value for a given row.
+            """
+            return float(any(row[label] for label in toxicity_labels))
 
-    def get_label_vector(self) -> torch.tensor:
-        return torch.tensor(self.hf_dataset["label"], dtype=torch.int8)
+        hf_dataset = hf_dataset.map(lambda row: {"any_toxic": compute_any_toxic(row)}, num_proc=get_available_cpus())
+        return hf_dataset

@@ -3,7 +3,7 @@ from copy import deepcopy
 
 import nltk
 import torch
-from datasets import Dataset
+from datasets import Dataset, disable_progress_bar, enable_progress_bar
 from nltk import WordNetLemmatizer, word_tokenize
 from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -199,3 +199,40 @@ def balance_dataset(dataset: FineTuningDataset, pos_proportion: float = 0.5, in_
         f"The balanced proportion of positive samples is {len(positive_indices) / len(balanced_indices)}.")
 
     return balanced_subset
+
+
+def rename_and_cast_columns(
+        dataset: FineTuningDataset,
+        reference: FineTuningDataset,
+        text_field: str,
+        input_field: list[str],
+        label_col: str
+) -> Dataset:
+    """
+    Renames and casts columns of the other_train dataset to match the train_set dataset.
+
+    Args:
+        dataset (FineTuningDataset): The dataset to rename and cast columns.
+        reference (FineTuningDataset): The reference dataset with the desired column names and types.
+        text_field (str): The name of the text field.
+        input_field (list[str]): The list of input field names.
+        label_col (str): The name of the label column.
+
+    Returns:
+        Dataset: The modified dataset with renamed and cast columns.
+    """
+    rename_map = {}
+    if dataset.text_field != text_field:
+        rename_map[dataset.text_field] = text_field
+    if dataset.label_col != label_col:
+        rename_map[dataset.label_col] = label_col
+    if dataset.input_fields != input_field:
+        for old_col, new_col in zip(dataset.input_fields, input_field):
+            if old_col != new_col:
+                rename_map[old_col] = new_col
+    disable_progress_bar()
+    if rename_map:
+        dataset.hf_dataset = dataset.hf_dataset.rename_columns(rename_map)
+    dataset.hf_dataset = dataset.hf_dataset.cast(reference.hf_dataset.features)
+    enable_progress_bar()
+    return dataset.hf_dataset
