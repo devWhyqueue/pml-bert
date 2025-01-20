@@ -12,6 +12,53 @@ from utils import is_main_process, _initialize_distributed, get_available_cpus
 
 log = get_logger(__name__)
 
+def evaluate_submission( submissions_dir: str | dict, dataset_split: str, config: dict = settings["finetuning"]):
+    """
+    Evaluate the model on the given submission file.
+
+    Args:
+        dataset (FineTuningDataset): The dataset to evaluate on.
+        submission (str | dict): Path to the submission file.
+        config (dict): Configuration settings.
+
+    Returns:
+        None
+    """
+    from datasets import load_dataset
+    from sklearn.metrics import roc_auc_score
+    import os
+
+    # Load the Civil Comments dataset
+    dataset = load_dataset("civil_comments")
+    
+    # Function to load predictions from CSV
+    def load_predictions(csv_file):
+        predictions = []
+        with open(csv_file, "r") as file:
+            next(file)  # Skip header
+            for line in file:
+                _, prediction = line.strip().split(",")  # Split by comma
+                predictions.append(float(prediction))   # Convert prediction to float
+        return predictions
+
+    # Extract true labels and binarize them
+    true_labels = [1 if sample["toxicity"] >= 0.5 else 0 for sample in dataset[dataset_split]]
+    submission_files = [os.path.join(submissions_dir, f) for f in os.listdir(submissions_dir) if f.endswith('.csv')]
+    # Iterate through each submission file
+    for file_path in submission_files:
+        # Load predicted values from the file
+        predicted_values = load_predictions(file_path)
+
+        # Ensure true labels and predictions are of the same length
+        assert len(true_labels) == len(predicted_values), f"Mismatch in true labels and predictions for {file_path}"
+
+        # Compute AUC-ROC score
+        roc_auc = roc_auc_score(true_labels, predicted_values)
+        log.info(f"File: {os.path.basename(file_path)} | ROC-AUC Score: {roc_auc:.4f}")
+
+    
+        
+
 
 def evaluate_on_all_datasets(model: nn.Module, train_dataset: FineTuningDataset, val_dataset: FineTuningDataset,
                              test_dataset: FineTuningDataset, config: dict):

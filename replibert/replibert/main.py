@@ -237,5 +237,24 @@ def evaluate(dataset_name: str, dataset_dir: str, weight_file: str):
     evaluate_model(test_dataset, weight_file)
 
 
+@cli.command()
+@click.option("--submission_files", type=click.Path(exists=True), required=True, help="Path to the kaggle submission files.")
+@click.option("--dataset_split", type=click.Choice(['test', 'validation']), required=True,
+              help="Split of the Civil Comments Dataset to use. Options are: 'test', 'validation'")
+def evaluate_kaggle(submission_files: str, dataset_split: str):
+    """
+    Evaluate the fine-tuned BERT model on the specified dataset.
+
+    Parameters:
+    submission_files (str): Path to the kaggle submission files.
+
+    This function loads the specified dataset and evaluates the model using the provided submission file.
+    """
+    from finetuning.evaluate import evaluate_submission
+
+
+    evaluate_submission(submission_files, dataset_split)
+
+
 if __name__ == "__main__":
     cli()
