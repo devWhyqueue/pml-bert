@@ -256,5 +256,45 @@ def evaluate_kaggle(submission_files: str, dataset_split: str):
     evaluate_submission(submission_files, dataset_split)
 
 
+@click.command()
+@click.option("--dataset_name", type=click.Choice(['civil_comments', 'jigsaw_toxicity_pred', 'sst2']), required=True,
+    help="Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred', 'sst2'.")
+@click.option("--dataset_dir", type=click.Path(exists=True), required=True,
+              help="Directory containing the tokenized dataset to process.")
+@click.option(
+    "--weights", type=click.Path(exists=True), required=True,help="Path to the trained model for generating explanations.")
+@click.option("--output_path", type=click.Path(), required=True,help="Path to save the generated explanations.")
+@click.option("--threshold", type=float, default=0.9,help="Confidence threshold to identify interesting predictions (default: 0.9).")
+def explain(dataset_name: str, dataset_dir: str, weights: str, output_path: str, threshold: float):
+    """
+    Generate explanations for model predictions on a specified dataset.
+
+    Parameters:
+    dataset_name (str): Name of the dataset to use.
+    dataset_dir (str): Directory containing the dataset to process.
+    weights (str): Path to the trained model weights.
+    output_path (str): Path to save the generated explanations.
+    threshold (float): Confidence threshold for identifying interesting predictions.
+    """
+
+    from data.utils import load_data
+    from finetuning.evaluate import explain_predictions
+
+
+
+    _, _, test_dataset = load_data(dataset=dataset_name, dataset_dir=dataset_dir)
+
+    # Assumes tokenization
+    test_dataset.input_field = ['input_ids', 'attention_mask']
+
+
+    explanations = explain_predictions(
+        weights=weights,
+        dataset=test_dataset,
+        threshold=threshold
+    )
+    log.info(explanations)
+
+
 if __name__ == "__main__":
     cli()

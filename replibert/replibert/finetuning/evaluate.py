@@ -13,6 +13,79 @@ from utils import is_main_process, _initialize_distributed, get_available_cpus
 
 log = get_logger(__name__)
 
+def explain_predictions(weights, dataset, threshold=0.9, config: dict = settings["finetuning"]):
+    """
+    Generates explanations for incorrect, high-confidence predictions.
+
+    Parameters:
+        weights (str): path to model weights.
+        dataset (FineTuningDataset): Dataset for generating explanations.
+        threshold (float): Confidence threshold for identifying interesting predictions.
+        config (dict): Configuration settings.
+
+    Returns:
+        list: Explanations for the identified predictions.
+    """
+    from captum.attr import IntegratedGradients
+    from torch.utils.data import DataLoader
+    from transformers import BertTokenizer
+
+
+    model = BertToxic(Bert(), num_labels=1)
+    state_dict = torch.load(weights, weights_only=True) if isinstance(weights, str) else weights
+    model.load_state_dict(state_dict)
+    model.to(config["device"])
+
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", use_fast=True)
+
+    model.eval()
+
+    # Create DataLoader
+    test_loader = DataLoader(
+        dataset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True
+    )
+
+    # Initialize Integrated Gradients
+    ig = IntegratedGradients(lambda inputs: model(input_ids=inputs[0], attention_mask=inputs[1]))
+
+    explanations = []
+
+    for idx, (inputs, labels) in enumerate(test_loader):
+        input_ids = inputs[:, 0, :].to(config["device"])
+        attention_mask = inputs[:, 1, :].to(config["device"])
+        labels = labels.to(config["device"])
+
+        with torch.no_grad():
+            logits = model(input_ids=input_ids, attention_mask=attention_mask).squeeze(-1)
+            probabilities = torch.sigmoid(logits)
+            predicted_class = (probabilities > 0.5).long().item()
+            confidence = probabilities.item()
+
+        # Identify interesting predictions
+        if predicted_class != labels.item() and confidence >= threshold:
+            # Compute attributions
+            attributions, _ = ig.attribute(
+                (input_ids, attention_mask), target=1, return_convergence_delta=True
+            )
+            tokens = tokenizer.convert_ids_to_tokens(input_ids.squeeze().tolist())
+            token_attributions = {
+                token: attr.item() for token, attr in zip(tokens, attributions[0].sum(dim=-1).squeeze())
+            }
+
+            # Store the explanation
+            explanations.append({
+                "index": idx,
+                "input_ids": input_ids.squeeze().tolist(),
+                "tokens": tokens,
+                "true_label": labels.item(),
+                "predicted_class": predicted_class,
+                "confidence": confidence,
+                "explanation": token_attributions
+            })
+
+    return explanations
+
+
 def evaluate_submission(submissions_dir: str, dataset_split: str):
     """
     Evaluate given submission files on the Civil Comments Dataset.
