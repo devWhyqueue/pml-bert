@@ -4,6 +4,7 @@ from sklearn.metrics import classification_report, roc_auc_score
 from torch import nn
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
+import os
 
 from configuration.config import get_logger, settings
 from data.finetuning.datasets import FineTuningDataset
@@ -12,26 +13,40 @@ from utils import is_main_process, _initialize_distributed, get_available_cpus
 
 log = get_logger(__name__)
 
-def evaluate_submission( submissions_dir: str | dict, dataset_split: str, config: dict = settings["finetuning"]):
+def evaluate_submission(submissions_dir: str, dataset_split: str):
     """
-    Evaluate the model on the given submission file.
+    Evaluate given submission files on the Civil Comments Dataset.
 
     Args:
         dataset (FineTuningDataset): The dataset to evaluate on.
-        submission (str | dict): Path to the submission file.
-        config (dict): Configuration settings.
+        submission (str): Path to the submission files.
 
     Returns:
         None
     """
     from datasets import load_dataset
     from sklearn.metrics import roc_auc_score
-    import os
 
-    # Load the Civil Comments dataset
     dataset = load_dataset("civil_comments")
-    
-    # Function to load predictions from CSV
+
+    true_labels = [1 if sample["toxicity"] >= 0.5 else 0 for sample in dataset[dataset_split]]
+    submission_files = [os.path.join(submissions_dir, f) for f in os.listdir(submissions_dir) if f.endswith('.csv')]
+
+    for file_path in submission_files:
+        evaluate_file(true_labels, file_path)
+        
+
+def evaluate_file(true_labels, file_path: str):
+    """
+    Evaluate the given submission file.
+
+    Args:
+        true_labels (list): Correct labels
+        file_path (str): Path to the submission file.
+
+    Returns:
+        None
+    """
     def load_predictions(csv_file):
         predictions = []
         with open(csv_file, "r") as file:
@@ -40,23 +55,20 @@ def evaluate_submission( submissions_dir: str | dict, dataset_split: str, config
                 _, prediction = line.strip().split(",")  # Split by comma
                 predictions.append(float(prediction))   # Convert prediction to float
         return predictions
-
-    # Extract true labels and binarize them
-    true_labels = [1 if sample["toxicity"] >= 0.5 else 0 for sample in dataset[dataset_split]]
-    submission_files = [os.path.join(submissions_dir, f) for f in os.listdir(submissions_dir) if f.endswith('.csv')]
-    # Iterate through each submission file
-    for file_path in submission_files:
-        # Load predicted values from the file
-        predicted_values = load_predictions(file_path)
-
-        # Ensure true labels and predictions are of the same length
-        assert len(true_labels) == len(predicted_values), f"Mismatch in true labels and predictions for {file_path}"
-
-        # Compute AUC-ROC score
-        roc_auc = roc_auc_score(true_labels, predicted_values)
-        log.info(f"File: {os.path.basename(file_path)} | ROC-AUC Score: {roc_auc:.4f}")
-
     
+    predicted_values = load_predictions(file_path)
+
+    assert len(true_labels) == len(predicted_values), f"Mismatch in true labels and predictions for {file_path}"
+
+    roc_auc = roc_auc_score(true_labels, predicted_values, average="weighted")
+    log.info(f"File: {os.path.basename(file_path)}: ")
+
+    predicted_labels = [1 if label >=0.5 else 0 for label in predicted_values]
+
+    class_report = classification_report(true_labels, predicted_labels)
+    log.info(f"Classification Report:\n{class_report}")
+
+    log.info(f"ROC-AUC Score: {roc_auc:.4f}")
         
 
 
