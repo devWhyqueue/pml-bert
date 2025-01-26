@@ -24,6 +24,8 @@ except LookupError:
 
 log = get_logger(__name__)
 
+BERT_TOKENIZER = BertTokenizer.from_pretrained("bert-base-uncased", use_fast=True)
+
 
 def tf_idf_vectorize(train_dataset: FineTuningDataset, val_dataset: FineTuningDataset, test_dataset: FineTuningDataset):
     """
@@ -69,21 +71,9 @@ def bert_tokenize(dataset: Dataset, text_field: str, config: dict = settings["mo
     Returns:
         Dataset: The tokenized dataset.
     """
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", use_fast=True)
-
     def _tokenize_batch(batch):
         texts = batch[text_field]
-        tokenized = tokenizer(
-            texts,
-            max_length=config["max_position_embeddings"],
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt"
-        )
-        return {
-            'input_ids': tokenized['input_ids'].tolist(),
-            'attention_mask': tokenized['attention_mask'].tolist()
-        }
+        return bert_tokenize_text(texts, config)
 
     dataset = dataset.map(
         _tokenize_batch,
@@ -94,6 +84,30 @@ def bert_tokenize(dataset: Dataset, text_field: str, config: dict = settings["mo
     )
 
     return dataset
+
+
+def bert_tokenize_text(text_or_batch: str | list, config: dict = settings["model"]) -> dict:
+    """
+    Tokenizes a single text string or a batch of text strings using the BERT tokenizer.
+
+    Args:
+        text_or_batch (str | list): The text string or list of text strings to tokenize.
+        config (dict): Configuration settings for the tokenizer.
+
+    Returns:
+        dict: A dictionary containing the tokenized 'input_ids' and 'attention_mask'.
+    """
+    tokenized = BERT_TOKENIZER(
+        text_or_batch,
+        max_length=config["max_position_embeddings"],
+        padding="max_length",
+        truncation=True,
+        return_tensors="pt"
+    )
+    return {
+        'input_ids': tokenized['input_ids'].tolist(),
+        'attention_mask': tokenized['attention_mask'].tolist()
+    }
 
 
 def preprocess(datasets: list[Dataset], text_field: str) -> list[Dataset]:

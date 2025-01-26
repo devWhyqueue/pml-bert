@@ -1,7 +1,7 @@
 import click
 
 from configuration.config import get_logger, settings
-from data.finetuning.transform import rename_and_cast_columns
+from data.finetuning.transform import rename_and_cast_columns, bert_tokenize_text
 
 log = get_logger(__name__)
 
@@ -237,6 +237,45 @@ def evaluate(dataset_name: str, dataset_dir: str, eval_set: str, weight_file: st
     splits = load_data(dataset=dataset_name, input_fields=['input_ids', 'attention_mask'], dataset_dir=dataset_dir)
     split = splits[1] if eval_set == "val" else splits[2]
     evaluate_model(split, weight_file)
+
+
+@cli.command()
+@click.option("--comment", type=str, required=True, help="Comment to classify.")
+@click.option("--threshold", type=float, default=0.5, help="Threshold for classification.")
+@click.option("--weight_file", type=click.Path(exists=True), required=True, help="Path to the model weights file.")
+def predict(comment: str, threshold: float, weight_file: str):
+    """
+    Classifies a comment as toxic or non-toxic using a fine-tuned BERT model.
+
+    Parameters:
+    comment (str): The comment to classify.
+    threshold (float): The threshold for classification. Default is 0.5.
+    weight_file (str): Path to the model weights file.
+
+    This function tokenizes the comment, loads the model weights, and classifies the comment.
+    The classification result and confidence are logged.
+    """
+    from model.model import BertToxic
+    from model.model import Bert
+    import torch
+
+    tokenized_comment = bert_tokenize_text(comment)
+    model = BertToxic(Bert(), num_labels=1)
+    state_dict = torch.load(weight_file, weights_only=True)
+    model.load_state_dict(state_dict)
+    model.to(settings["finetuning"]["device"])
+    model.eval()
+    with torch.no_grad():
+        input_ids = torch.tensor(tokenized_comment["input_ids"], device=settings["finetuning"]["device"])
+        attention_mask = torch.tensor(tokenized_comment["attention_mask"], device=settings["finetuning"]["device"])
+        logits = model(input_ids=input_ids, attention_mask=attention_mask).squeeze(-1)
+        probabilities = torch.sigmoid(logits)
+        prediction = (probabilities > threshold).long()
+        confidence = max(probabilities.item(), 1 - probabilities.item())
+
+    log.info(f"Comment: '{comment}' is classified as {'toxic' if prediction else 'non-toxic'} "
+             f"with confidence {confidence:.2f}.")
+
 
 
 if __name__ == "__main__":
