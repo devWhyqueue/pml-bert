@@ -3,6 +3,9 @@ import torch.distributed as dist
 from sklearn.metrics import classification_report, roc_auc_score
 from torch import nn
 from torch.utils.data import DataLoader, DistributedSampler
+from captum.attr import IntegratedGradients, visualization as viz
+from transformers import BertTokenizer
+
 from tqdm import tqdm
 import os
 
@@ -13,77 +16,184 @@ from utils import is_main_process, _initialize_distributed, get_available_cpus
 
 log = get_logger(__name__)
 
-def explain_predictions(weights, dataset, threshold=0.9, config: dict = settings["finetuning"]):
+def explain_false_predictions(weights, dataset, save_path, config: dict = settings["finetuning"]):
     """
-    Generates explanations for incorrect, high-confidence predictions.
+    Analyzes false predictions of a fine-tuned BERT model for toxic comment classification.
 
-    Parameters:
-        weights (str): path to model weights.
-        dataset (FineTuningDataset): Dataset for generating explanations.
-        threshold (float): Confidence threshold for identifying interesting predictions.
-        config (dict): Configuration settings.
+    This function evaluates the model using a given dataset and identifies instances where 
+    the model's predicted labels differ from the true labels. For false predictions where the 
+    confidence level is below 0.7, the function generates an explanation for the 
+    prediction using attribution methods and logs the relevant information.
+
+    Args:
+        weights (str): Path to the saved model weights file.
+        dataset (Dataset): The dataset object containing the test samples and corresponding labels.
+        save_path (str): Path where the visualization file will be saved.
+        config (dict, optional): Configuration dictionary specifying the device and other 
+                                 finetuning settings. Defaults to `settings["finetuning"]`.
 
     Returns:
-        list: Explanations for the identified predictions.
+        None
     """
-    from captum.attr import IntegratedGradients
     from torch.utils.data import DataLoader
-    from transformers import BertTokenizer
-
 
     model = BertToxic(Bert(), num_labels=1)
-    state_dict = torch.load(weights, weights_only=True) if isinstance(weights, str) else weights
+    state_dict = torch.load(weights, weights_only=True)
     model.load_state_dict(state_dict)
     model.to(config["device"])
-
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", use_fast=True)
-
     model.eval()
 
-    # Create DataLoader
-    test_loader = DataLoader(
-        dataset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True
+    test_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", use_fast=True)
+
+
+    records = []
+    for idx, (input, label) in enumerate(test_loader):
+        input_c = input.to(config["device"])
+        true_label = label.to(config["device"]).item()>0.5
+        prediction = torch.sigmoid(model(input_ids=input_c[:,0,:], attention_mask=input_c[:,1,:]).squeeze(-1))
+        predicted_label = prediction.item()>0.5
+        if true_label!=predicted_label and prediction < 0.7:
+            prediction, attribution, input_ids = explain_prediction(model, input_c, tokenizer)
+            score_vis = visualize_explanation(attribution,prediction, predicted_label, true_label, tokenizer, input_ids)
+            if score_vis!=None:
+                records.append(score_vis)
+    
+            print("True Label: ", label.item(), "Prediction: ", prediction, "Explanation: ", attribution)
+
+    visualization = viz.visualize_text(records)
+    # Save as an HTML file
+    with open(save_path + "explain.html", "w") as f:
+        f.write(visualization.data)
+
+def explain_prediction(weights, input, tokenizer, config: dict = settings["finetuning"]):
+    """
+    Generates predictions and explanations for a given input using a BERT-based model.
+
+    Args:
+        weights (Union[BertToxic, str]): The model instance or a path to the saved model weights.
+        input (Union[str, torch.Tensor]): The input to classify and explain. If a string, it will be tokenized. 
+                                          If a tensor, it should already contain token IDs and attention masks.
+        tokenizer (BertTokenizer): The tokenizer used for tokenizing input texts.
+        config (dict): Configuration settings including the device ("cuda" or "cpu").
+
+    Returns:
+        Tuple[float, dict, torch.Tensor]:
+            - Probability of the positive class (toxic).
+            - Token-level attributions as a dictionary where keys are tokens and values are attribution scores.
+            - Input IDs used for explanation visualization.
+    """
+
+    if isinstance(weights, BertToxic):
+        model = weights.to(config["device"])
+    else:
+        model = BertToxic(Bert().to(config["device"]), num_labels=1)
+        state_dict = torch.load(weights, weights_only=True)
+        model.load_state_dict(state_dict)
+        model.to(config["device"])
+
+
+    if isinstance(input, str):
+        tokenized = tokenizer(input, return_tensors="pt", padding=True, truncation=True, max_length=settings["model"]["max_position_embeddings"])
+        input_ids = tokenized["input_ids"].to(config["device"])
+        attention_mask = tokenized["attention_mask"].to(config["device"])
+    elif isinstance(input, torch.Tensor):
+        input_ids = input[:, 0, :]
+        attention_mask = input[:, 1, :]
+    else:
+        raise ValueError("Input must be a string or a preprocessed tensor.")
+
+    def forward_with_embeddings(embedding_inputs, attention_mask):
+        output = model(input_ids=None, attention_mask=attention_mask, inputs_embeds=embedding_inputs)
+        
+        return output
+
+    ig = IntegratedGradients(forward_with_embeddings)
+
+    with torch.no_grad():
+        embedding_inputs = model.bert.embeddings(input_ids=input_ids)
+        logit = model(input_ids=input_ids, attention_mask=attention_mask).squeeze(-1)
+        probability = torch.sigmoid(logit).item()
+        baseline_embeds = create_baseline(input_ids, tokenizer, model)
+
+    attributions, _ = ig.attribute(
+        inputs=embedding_inputs.requires_grad_(),
+        additional_forward_args=(attention_mask,),
+        target=None,
+        baselines=baseline_embeds,
+        return_convergence_delta=True
     )
 
-    # Initialize Integrated Gradients
-    ig = IntegratedGradients(lambda inputs: model(input_ids=inputs[0], attention_mask=inputs[1]))
+    tokens = tokenizer.convert_ids_to_tokens(input_ids.squeeze().tolist())
+    token_attributions = {
+        token: attr.item() for token, attr in zip(tokens, attributions[0].sum(dim=-1).squeeze())
+    }
 
-    explanations = []
 
-    for idx, (inputs, labels) in enumerate(test_loader):
-        input_ids = inputs[:, 0, :].to(config["device"])
-        attention_mask = inputs[:, 1, :].to(config["device"])
-        labels = labels.to(config["device"])
+    return probability, token_attributions, input_ids
 
-        with torch.no_grad():
-            logits = model(input_ids=input_ids, attention_mask=attention_mask).squeeze(-1)
-            probabilities = torch.sigmoid(logits)
-            predicted_class = (probabilities > 0.5).long().item()
-            confidence = probabilities.item()
+def visualize_explanation(token_attributions, pred_prob, pred_class, true_label, tokenizer, input_ids):
+    """
+    Saves the explanation of the input using Captum's text visualization.
 
-        # Identify interesting predictions
-        if predicted_class != labels.item() and confidence >= threshold:
-            # Compute attributions
-            attributions, _ = ig.attribute(
-                (input_ids, attention_mask), target=1, return_convergence_delta=True
-            )
-            tokens = tokenizer.convert_ids_to_tokens(input_ids.squeeze().tolist())
-            token_attributions = {
-                token: attr.item() for token, attr in zip(tokens, attributions[0].sum(dim=-1).squeeze())
-            }
+    Args:
+        token_attributions (dict): Dictionary with tokens as keys and attribution scores as values.
+        pred_prob (float): Predicted toxicity probability
+        pred_class (int): predicted class
+        true_label (int): true class
+        tokenizer (BertTokenizer): tokenizer to decode tokens
+        input_ids (Tensor): Input IDs of sample
 
-            # Store the explanation
-            explanations.append({
-                "index": idx,
-                "input_ids": input_ids.squeeze().tolist(),
-                "tokens": tokens,
-                "true_label": labels.item(),
-                "predicted_class": predicted_class,
-                "confidence": confidence,
-                "explanation": token_attributions
-            })
+    Returns:
+        None
+    """
+    tokens = list(token_attributions.keys())
+    attributions_sum = list(token_attributions.values())  # Token attributions
+    delta = sum(attributions_sum)  # Convergence score (optional)
+    full_text = tokenizer.decode(input_ids.squeeze(0).tolist(), skip_special_tokens=True)
 
-    return explanations
+    score_vis = viz.VisualizationDataRecord(
+        word_attributions=attributions_sum,
+        pred_prob=pred_prob,
+        pred_class=pred_class,
+        true_class=true_label, 
+        attr_class=full_text, 
+        attr_score=delta,       
+        raw_input_ids=tokens,
+        convergence_score=delta
+    )
+
+    return score_vis
+
+
+
+def create_baseline(input_ids: torch.Tensor, tokenizer: BertTokenizer, model: BertToxic, config: dict = settings["finetuning"]):
+    """
+    Creates a baseline tensor using padding tokens for attribution methods while keeping special tokens unchanged.
+
+    Args:
+        input_ids (torch.Tensor): Tensor containing tokenized input IDs.
+        tokenizer (BertTokenizer): Tokenizer used for tokenization.
+        config (dict): Configuration dictionary containing model settings.
+        model (BertToxic): Bert model
+
+    Returns:
+        torch.Tensor: Baseline tensor with the same shape as input_ids, where special tokens remain unchanged,
+                      and other tokens are replaced with neutral token IDs.
+    """
+    pad_token_id = tokenizer.pad_token_id  # Get the padding token ID
+    special_token_mask = torch.isin(input_ids, torch.tensor(tokenizer.all_special_ids, device=input_ids.device))
+    
+    # Create a baseline where non-special tokens are replaced with pad_token_id
+    baseline_ids = input_ids.clone()
+    baseline_ids[~special_token_mask] = pad_token_id
+    
+    with torch.no_grad():
+        baseline_embeds = model.bert.embeddings(input_ids=baseline_ids.to(config["device"]))
+    
+    return baseline_embeds
+
+
 
 
 def evaluate_submission(submissions_dir: str, dataset_split: str):

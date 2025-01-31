@@ -120,26 +120,36 @@ class Bert(nn.Module):
         self.encoder = nn.ModuleList([BertLayer(config) for _ in range(config["num_layers"])])
         self.config = config
 
-    def forward(self, input_ids: torch.Tensor, token_type_ids: Optional[torch.Tensor] = None,
-                attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, input_ids: Optional[torch.Tensor] = None, 
+                token_type_ids: Optional[torch.Tensor] = None,
+                attention_mask: Optional[torch.Tensor] = None,
+                inputs_embeds: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Forward pass for the Bert model.
 
         Args:
-            input_ids (torch.Tensor): Tensor of input token IDs.
+            input_ids (Optional[torch.Tensor]): Tensor of input token IDs.
             token_type_ids (Optional[torch.Tensor]): Tensor of token type IDs. Defaults to None.
             attention_mask (Optional[torch.Tensor]): Tensor of attention mask. Defaults to None.
+            inputs_embeds (Optional[torch.Tensor]): Precomputed embeddings. Defaults to None.
 
         Returns:
             torch.Tensor: Tensor of output hidden states.
         """
-        embeddings = self.embeddings(input_ids, token_type_ids)
+        # Use inputs_embeds if provided; otherwise, generate embeddings from input_ids
+        if inputs_embeds is None:
+            embeddings = self.embeddings(input_ids, token_type_ids)
+        else:
+            embeddings = inputs_embeds
+
         hidden_states = embeddings
 
+        # Pass through all encoder layers
         for layer in self.encoder:
             hidden_states = layer(hidden_states, attention_mask)
 
         return hidden_states
+
 
 
 class BertToxic(nn.Module):
@@ -161,21 +171,25 @@ class BertToxic(nn.Module):
         self.dropout = nn.Dropout(0.1)
         self.classifier = nn.Linear(config["hidden_size"], num_labels)
 
-    def forward(self, input_ids: torch.Tensor, token_type_ids: Optional[torch.Tensor] = None,
-                attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, input_ids: Optional[torch.Tensor] = None, 
+                token_type_ids: Optional[torch.Tensor] = None,
+                attention_mask: Optional[torch.Tensor] = None,
+                inputs_embeds: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Forward pass for the BertToxic model.
 
         Args:
-            input_ids (torch.Tensor): Tensor of input token IDs.
+            input_ids (Optional[torch.Tensor]): Tensor of input token IDs.
             token_type_ids (Optional[torch.Tensor]): Tensor of token type IDs. Defaults to None.
             attention_mask (Optional[torch.Tensor]): Tensor of attention mask. Defaults to None.
+            inputs_embeds (Optional[torch.Tensor]): Precomputed embeddings. Defaults to None.
 
         Returns:
             torch.Tensor: Tensor of classification logits.
         """
-        hidden_states = self.bert(input_ids, token_type_ids, attention_mask)
-        cls_token_state = hidden_states[:, 0, :]
+        # Pass inputs_embeds to the Bert model if provided
+        hidden_states = self.bert(input_ids, token_type_ids, attention_mask, inputs_embeds)
+        cls_token_state = hidden_states[:, 0, :]  # [CLS] token hidden state
         cls_token_state = self.dropout(cls_token_state)
         logits = self.classifier(cls_token_state)
         return logits
