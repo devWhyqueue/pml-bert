@@ -277,6 +277,52 @@ def predict(comment: str, threshold: float, weight_file: str):
              f"with confidence {confidence:.2f}.")
 
 
+@cli.command()
+@click.option("--submission_files", type=click.Path(exists=True), required=True,
+              help="Path to the kaggle submission files.")
+@click.option("--dataset_split", type=click.Choice(['test', 'validation']), required=True,
+              help="Split of the Civil Comments Dataset to use. Options are: 'test', 'validation'")
+def evaluate_kaggle(submission_files: str, dataset_split: str):
+    """
+    Evaluate the fine-tuned BERT model on the specified dataset.
+
+    Parameters:
+    submission_files (str): Path to the kaggle submission files.
+
+    This function loads the specified dataset and evaluates the model using the provided submission file.
+    """
+    from finetuning.evaluate import evaluate_submission
+    evaluate_submission(submission_files, dataset_split)
+
+
+@cli.command()
+@click.option("--dataset_name", type=click.Choice(['civil_comments', 'jigsaw_toxicity_pred']),
+              required=True, help="Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred'.")
+@click.option("--dataset_dir", type=click.Path(exists=True), required=True,
+              help="Directory containing the tokenized dataset to process.")
+@click.option("--weights", type=click.Path(exists=True), required=True,
+              help="Path to the trained model for generating explanations.")
+@click.option("--save_path", type=click.Path(exists=True), required=True,
+              help="Directory to save visualisation of explanation to.")
+def explain(dataset_name: str, dataset_dir: str, weights: str, save_path: str):
+    """
+    Generate explanations for model predictions on a specified dataset.
+
+    Parameters:
+    dataset_name (str): Name of the dataset to use.
+    dataset_dir (str): Directory containing the dataset to process.
+    weights (str): Path to the trained model weights.
+    output_path (str): Path to save the generated explanations.
+    """
+
+    from data.utils import load_data
+    from finetuning.explain import explain_false_predictions
+
+    _, _, test_dataset = load_data(
+        dataset=dataset_name, dataset_dir=dataset_dir, input_fields=['input_ids', 'attention_mask']
+    )
+    explain_false_predictions(weights=weights, dataset=test_dataset, explanation_path=save_path)
+
 
 if __name__ == "__main__":
     cli()

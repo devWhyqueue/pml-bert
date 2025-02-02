@@ -1,5 +1,8 @@
+import os
+
 import torch
 import torch.distributed as dist
+from datasets import load_dataset
 from sklearn.metrics import classification_report, roc_auc_score
 from torch import nn
 from torch.utils.data import DataLoader, DistributedSampler
@@ -182,4 +185,64 @@ def _log_metrics(total_loss: float, total_samples: int, labels, preds, probs):
     log.info(f"Classification Report:\n{class_report}")
 
     roc_auc = roc_auc_score(labels, probs, average="weighted")
+    log.info(f"ROC-AUC Score: {roc_auc:.4f}")
+
+
+def evaluate_submission(submissions_dir: str, dataset_split: str) -> None:
+    """
+    Evaluate the model using Kaggle submission files.
+
+    Parameters:
+    submissions_dir (str): Directory containing the submission files.
+    dataset_split (str): Dataset split to use for evaluation ('test' or 'validation').
+
+    Returns:
+    None
+    """
+    dataset = load_dataset("civil_comments")
+    true_labels = [1 if sample["toxicity"] >= 0.5 else 0 for sample in dataset[dataset_split]]
+    submission_files = [os.path.join(submissions_dir, f) for f in os.listdir(submissions_dir) if f.endswith('.csv')]
+    for file_path in submission_files:
+        predicted_values = _load_predictions(file_path)
+        _evaluate_file(true_labels, predicted_values, file_path)
+
+
+def _load_predictions(csv_file: str) -> list[float]:
+    """
+    Load predictions from a CSV file.
+
+    Parameters:
+    csv_file (str): Path to the CSV file.
+
+    Returns:
+    list[float]: List of predictions.
+    """
+    predictions = []
+    with open(csv_file, "r") as file:
+        next(file)  # Skip header
+        for line in file:
+            _, prediction = line.strip().split(",")
+            predictions.append(float(prediction))
+    return predictions
+
+
+def _evaluate_file(true_labels: list[int], predicted_values: list[float], file_path: str) -> None:
+    """
+    Evaluate a single submission file.
+
+    Parameters:
+    true_labels (list[int]): List of true labels.
+    predicted_values (list[float]): List of predicted values.
+    file_path (str): Path to the submission file.
+
+    Returns:
+    None
+    """
+    roc_auc = roc_auc_score(true_labels, predicted_values, average="weighted")
+    log.info(f"File: {os.path.basename(file_path)}: ")
+
+    predicted_labels = [1 if label >= 0.5 else 0 for label in predicted_values]
+
+    class_report = classification_report(true_labels, predicted_labels)
+    log.info(f"Classification Report:\n{class_report}")
     log.info(f"ROC-AUC Score: {roc_auc:.4f}")
