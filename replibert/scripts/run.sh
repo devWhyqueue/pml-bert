@@ -1,16 +1,7 @@
 #!/bin/bash
 
-#SBATCH --partition=cpu-2h
+partition="gpu-teaching-9m"
+dataset_dir_bind="/home/space/datasets:/home/space/datasets"
 
-# Check if the script is being executed or submitted
-if [ -z "$SLURM_JOB_ID" ]; then
-    # Not running as an sbatch job, submit itself
-    sbatch --output=$HOME/pml-bert/replibert/logs/run.log "$0" "$@"
-    exit
-fi
-
-options="$@"
-
-echo 'Running replibert...'
-apptainer run --bind /home/space/datasets:/home/space/datasets pml.sif python replibert/main.py $options
-echo 'Replibert execution completed.'
+srun --partition=$partition --nodelist=head025 --gpus-per-node=1 \
+      apptainer run --nv --bind $dataset_dir_bind pml.sif python replibert/main.py "$@"

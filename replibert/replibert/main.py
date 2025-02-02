@@ -1,6 +1,7 @@
 import click
 
 from configuration.config import get_logger, settings
+from data.finetuning.transform import rename_and_cast_columns, bert_tokenize_text
 
 log = get_logger(__name__)
 
@@ -124,9 +125,9 @@ def mlm(dataset_dir: str, destination: str, start_index: int, end_index: int):
 @cli.command()
 @click.option(
     "--dataset_name",
-    type=click.Choice(['civil_comments', 'jigsaw_toxicity_pred', 'sst2']),
+    type=click.Choice(['civil_comments', 'jigsaw_toxicity_pred']),
     required=True,
-    help="Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred', 'sst2'."
+    help="Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred'."
 )
 @click.option("--dataset_dir", type=click.Path(exists=True), required=True,
               help="Directory containing the dataset to process.")
@@ -140,12 +141,13 @@ def baseline(dataset_name: str, dataset_dir: str, dataset_fraction: float = 1.0)
     from baseline import binary_classification
 
     log.info(f"Loading data for {dataset_name}...")
-    train_dataset, val_dataset, test_dataset = load_data(dataset_name, dataset_dir, dataset_fraction=dataset_fraction)
+    train_dataset, val_dataset, test_dataset = load_data(dataset_name, ["tf_idf"], dataset_dir,
+                                                         dataset_fraction=dataset_fraction)
 
-    if dataset_name in ['sst2', 'civil_comments','jigsaw_toxicity_pred']:
+    if dataset_name in ['civil_comments', 'jigsaw_toxicity_pred']:
         log.info("Performing binary classification...")
         binary_classification(train_dataset, val_dataset, test_dataset)
-        
+
     else:
         log.error("Unknown dataset name. This should not happen due to limited options.")
 
@@ -179,43 +181,46 @@ def tokenize(dataset_dir: str, text_field: str, preprocess: bool, destination: s
     dataset = bert_tokenize(dataset, text_field)
     dataset.save_to_disk(destination)
 
-@cli.command()
-@click.option("--dataset_name", type=click.Choice(['civil_comments', 'jigsaw_toxicity_pred', 'sst2']), required=True,
-              help="Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred', 'sst2'.")
-@click.option("--dataset_dir", type=click.Path(exists=True), required=True,
-              help="Directory containing the tokenized dataset to process.")
-@click.option("--weight_dir", type=click.Path(), help="Directory to save the model weights.")
-def finetune(dataset_name: str, dataset_dir: str, weight_dir: str = None):
-    """
-    Fine-tune a BERT model on the specified dataset.
 
-    Parameters:
-    dataset_name (str): Name of the dataset to use.
-    dataset_dir (str): Directory containing the dataset to process.
-    weight_dir (str): Directory to save the model weights.
-    """
+@cli.command()
+@click.option("--dataset_name", multiple=True, type=click.Choice(["civil_comments", "jigsaw_toxicity_pred"]),
+              required=True, help="Names of the dataset to use.")
+@click.option("--dataset_dir", multiple=True, type=click.Path(exists=True), required=True,
+              help="Directories containing the tokenized datasets to process.")
+@click.option("--val-for-training", is_flag=True, help="Flag to include the validation set for training.")
+@click.option("--weight_dir", type=click.Path(), help="Directory where the model weights will be saved.")
+def finetune(dataset_name: list[str], dataset_dir: list[str], val_for_training: bool, weight_dir: str = None):
+    from datasets import concatenate_datasets
     from finetuning.classification import finetune as finetune_model
     from data.utils import load_data
 
-    train_dataset, val_dataset, test_dataset = load_data(
-        dataset=dataset_name, dataset_dir=dataset_dir, dataset_fraction=settings['finetuning']['dataset_fraction']
-    )
+    log.info("Loading data...")
+    train_set, val_set, test_set = load_data(dataset_name[0], ['input_ids', 'attention_mask'], dataset_dir[0],
+                                             dataset_fraction=settings["finetuning"]["dataset_fraction"])
+    for i in range(1, len(dataset_name)):
+        other_train, other_val, other_test \
+            = load_data(dataset_name[i], ['input_ids', 'attention_mask'], dataset_dir[i],
+                        dataset_fraction=settings["finetuning"]["dataset_fraction"])
+        other_train.hf_dataset = concatenate_datasets(
+            [other_train.hf_dataset, other_val.hf_dataset, other_test.hf_dataset])
+        other_train.hf_dataset = rename_and_cast_columns(other_train, train_set, train_set.text_field,
+                                                         train_set.input_fields, train_set.label_col)
+        train_set.hf_dataset = concatenate_datasets([train_set.hf_dataset, other_train.hf_dataset])
 
-    # Assumes tokenization
-    train_dataset.input_field = ['input_ids', 'attention_mask']
-    val_dataset.input_field = ['input_ids', 'attention_mask']
-    test_dataset.input_field = ['input_ids', 'attention_mask']
+    if val_for_training:
+        train_set.hf_dataset = concatenate_datasets([train_set.hf_dataset, val_set.hf_dataset])
 
-    finetune_model(train_dataset, val_dataset, test_dataset, weight_dir)
+    finetune_model(train_set, val_set, test_set, weight_dir)
 
 
 @cli.command()
-@click.option("--dataset_name", type=click.Choice(['civil_comments', 'jigsaw_toxicity_pred', 'sst2']), required=True,
-              help="Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred', 'sst2'.")
+@click.option("--dataset_name", type=click.Choice(['civil_comments', 'jigsaw_toxicity_pred']), required=True,
+              help="Name of the dataset to use. Options are: 'civil_comments', 'jigsaw_toxicity_pred'.")
 @click.option("--dataset_dir", type=click.Path(exists=True), required=True,
               help="Directory containing the tokenized dataset to process.")
+@click.option("--eval_set", type=click.Choice(["val", "test"]), required=True, help="Evaluation set to use.")
 @click.option("--weight_file", type=click.Path(exists=True), required=True, help="Path to the model weights file.")
-def evaluate(dataset_name: str, dataset_dir: str, weight_file: str):
+def evaluate(dataset_name: str, dataset_dir: str, eval_set: str, weight_file: str):
     """
     Evaluate the fine-tuned BERT model on the specified dataset.
 
@@ -229,12 +234,48 @@ def evaluate(dataset_name: str, dataset_dir: str, weight_file: str):
     from data.utils import load_data
     from finetuning.evaluate import evaluate as evaluate_model
 
-    _, _, test_dataset = load_data(dataset=dataset_name, dataset_dir=dataset_dir)
+    splits = load_data(dataset=dataset_name, input_fields=['input_ids', 'attention_mask'], dataset_dir=dataset_dir)
+    split = splits[1] if eval_set == "val" else splits[2]
+    evaluate_model(split, weight_file)
 
-    # Assumes tokenization
-    test_dataset.input_field = ['input_ids', 'attention_mask']
 
-    evaluate_model(test_dataset, weight_file)
+@cli.command()
+@click.option("--comment", type=str, required=True, help="Comment to classify.")
+@click.option("--threshold", type=float, default=0.5, help="Threshold for classification.")
+@click.option("--weight_file", type=click.Path(exists=True), required=True, help="Path to the model weights file.")
+def predict(comment: str, threshold: float, weight_file: str):
+    """
+    Classifies a comment as toxic or non-toxic using a fine-tuned BERT model.
+
+    Parameters:
+    comment (str): The comment to classify.
+    threshold (float): The threshold for classification. Default is 0.5.
+    weight_file (str): Path to the model weights file.
+
+    This function tokenizes the comment, loads the model weights, and classifies the comment.
+    The classification result and confidence are logged.
+    """
+    from model.model import BertToxic
+    from model.model import Bert
+    import torch
+
+    tokenized_comment = bert_tokenize_text(comment)
+    model = BertToxic(Bert(), num_labels=1)
+    state_dict = torch.load(weight_file, weights_only=True)
+    model.load_state_dict(state_dict)
+    model.to(settings["finetuning"]["device"])
+    model.eval()
+    with torch.no_grad():
+        input_ids = torch.tensor(tokenized_comment["input_ids"], device=settings["finetuning"]["device"])
+        attention_mask = torch.tensor(tokenized_comment["attention_mask"], device=settings["finetuning"]["device"])
+        logits = model(input_ids=input_ids, attention_mask=attention_mask).squeeze(-1)
+        probabilities = torch.sigmoid(logits)
+        prediction = (probabilities > threshold).long()
+        confidence = max(probabilities.item(), 1 - probabilities.item())
+
+    log.info(f"Comment: '{comment}' is classified as {'toxic' if prediction else 'non-toxic'} "
+             f"with confidence {confidence:.2f}.")
+
 
 @cli.command()
 @click.option("--submission_files", type=click.Path(exists=True), required=True, help="Path to the kaggle submission files.")
