@@ -319,11 +319,7 @@ def explain(dataset_name: str, dataset_dir: str, weights: str, save_path: str):
     from finetuning.evaluate import explain_false_predictions
 
 
-
-    _, _, test_dataset = load_data(dataset=dataset_name, dataset_dir=dataset_dir)
-
-    # Assumes tokenization
-    test_dataset.input_field = ['input_ids', 'attention_mask']
+    _, _, test_dataset = load_data(dataset=dataset_name, dataset_dir=dataset_dir, input_fields=['input_ids', 'attention_mask'])
 
 
     explain_false_predictions(
